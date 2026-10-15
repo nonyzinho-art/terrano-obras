@@ -34,6 +34,7 @@ export interface WorkService {
 
 export type BudgetStatus = "em_cotacao" | "cotado" | "aprovado";
 export interface Budget {
+  execution_status?: "em_execucao" | "concluido";
   revision?: number;
   source_filename?: string;
   id: string;
@@ -63,6 +64,8 @@ export interface BudgetItem {
 export type Weather = "Ensolarado" | "Nublado" | "Chuvoso" | "Parcialmente nublado";
 
 export interface DailyReport {
+  author_email?: string | null;
+  budget_id?: string | null;
   id: string;
   work_id: string;
   date: string;
@@ -84,6 +87,7 @@ export interface DailyReportItem {
 }
 
 export interface Photo {
+  budget_id?: string | null;
   id: string;
   daily_report_id: string;
   file_url: string;
