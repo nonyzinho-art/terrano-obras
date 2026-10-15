@@ -32,7 +32,7 @@ export function ReportBody({ report }: { report: DailyReport }) {
       </DialogHeader>
       <div className="grid grid-cols-2 gap-4 rounded-md border bg-muted/40 p-4 sm:grid-cols-4">
         <Field label="Clima">{report.weather}</Field>
-        <Field label="Responsável">{report.responsible_user}</Field>
+        <Field label="Responsável">{report.responsible_user}{report.author_email && report.author_email !== report.responsible_user && <span className="block break-all text-xs text-muted-foreground">{report.author_email}</span>}</Field>
         <Field label="Trabalhadores"><span className="num">{report.workers_quantity}</span></Field>
         <Field label="Equipamentos"><span className="num">{report.equipment_quantity ?? report.equipment.length}</span>{report.equipment.length > 0 && <span className="block text-xs text-muted-foreground">{report.equipment.join(", ")}</span>}</Field>
       </div>

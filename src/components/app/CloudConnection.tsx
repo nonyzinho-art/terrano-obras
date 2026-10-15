@@ -35,6 +35,10 @@ export function CloudConnection({ children }: { children: ReactNode }) {
   const [telegramUrl, setTelegramUrl] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [signupMode, setSignupMode] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
@@ -110,6 +114,10 @@ export function CloudConnection({ children }: { children: ReactNode }) {
     };
   }, [user]);
   const authenticate = async (signup: boolean) => {
+    if (signup && (fullName.trim().length < 3 || fullName.trim().length > 120)) {
+      setMessage("Preencha seu nome completo, entre 3 e 120 caracteres.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -118,13 +126,13 @@ export function CloudConnection({ children }: { children: ReactNode }) {
         ? await client.auth.signUp({
             email,
             password,
-            options: { emailRedirectTo: window.location.origin },
+            options: { emailRedirectTo: window.location.origin, data: { full_name: fullName.trim() } },
           })
         : await client.auth.signInWithPassword({ email, password });
       if (result.error) throw result.error;
       if (signup && !result.data.session)
         setMessage(
-          "Confira seu e-mail para confirmar o cadastro. Seu acesso será liberado pelo administrador.",
+          "Confira seu e-mail para confirmar o cadastro. Depois, entre com seu e-mail e senha.",
         );
       setPassword("");
     } catch (error) {
@@ -147,6 +155,22 @@ export function CloudConnection({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false);
     }
+  };
+  const saveProfile = async () => {
+    if (profileName.trim().length < 3 || profileName.trim().length > 120) {
+      setMessage("Preencha seu nome completo, entre 3 e 120 caracteres.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data, error } = await getSupabase().auth.updateUser({ data: { full_name: profileName.trim() } });
+      if (error) throw error;
+      if (data.user) setUser(data.user);
+      setProfileOpen(false);
+      setMessage("Nome atualizado.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível salvar seu nome.");
+    } finally { setBusy(false); }
   };
   const telegram = async (action: "link" | "configure") => {
     setBusy(true);
@@ -201,14 +225,20 @@ export function CloudConnection({ children }: { children: ReactNode }) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void authenticate(false);
+            void authenticate(signupMode);
           }}
           className="w-full max-w-md rounded-xl border bg-card space-y-4 p-7 shadow-sm"
         >
           <h2 className="font-semibold">Terrano Obras — Acesso</h2>
           <p className="text-sm text-muted-foreground">
-            Entre para acessar suas obras. Novos cadastros aguardam a liberação do administrador.
+            Entre com seu e-mail e senha. Novos cadastros têm acesso automático ao sistema.
           </p>
+          {signupMode && (
+            <label className="block text-sm">
+              Nome completo
+              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required minLength={3} maxLength={120} />
+            </label>
+          )}
           <label className="block text-sm">
             E-mail
             <Input
@@ -235,15 +265,15 @@ export function CloudConnection({ children }: { children: ReactNode }) {
           )}
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy || !password} type="submit">
-              Entrar
+              {signupMode ? "Criar conta" : "Entrar"}
             </Button>
             <Button
               type="button"
               variant="outline"
-              disabled={busy || password.length < 8}
-              onClick={() => authenticate(true)}
+              disabled={busy}
+              onClick={() => { setSignupMode(!signupMode); setMessage(""); }}
             >
-              Solicitar primeiro acesso
+              {signupMode ? "Já tenho conta" : "Criar minha conta"}
             </Button>
           </div>
         </form>
@@ -278,9 +308,13 @@ export function CloudConnection({ children }: { children: ReactNode }) {
     <AppShell>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card p-3 text-sm">
         <span>
-          {user.email} · {ROLE_LABELS[profile.role]}
+          {user.user_metadata?.["full_name"] || user.email} · {ROLE_LABELS[profile.role]}
         </span>
         <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => {
+            setProfileName(user.user_metadata?.["full_name"] || "");
+            setProfileOpen(!profileOpen);
+          }}>Meu perfil</Button>
           {profile.role === "administrador" && (
             <Button size="sm" variant="outline" onClick={() => setAdminOpen(true)}>
               Gerenciar acessos
@@ -310,6 +344,19 @@ export function CloudConnection({ children }: { children: ReactNode }) {
           </>
         </div>
       </div>
+      {profileOpen && (
+        <form className="panel mb-5 space-y-3 p-4" onSubmit={(e) => { e.preventDefault(); void saveProfile(); }}>
+          <h2 className="font-semibold">Meu perfil</h2>
+          <p className="text-sm text-muted-foreground">{user.email}</p>
+          <label className="block text-sm">Nome completo
+            <Input value={profileName} onChange={(e) => setProfileName(e.target.value)} autoComplete="name" required minLength={3} maxLength={120} />
+          </label>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={busy}>Salvar nome</Button>
+            <Button type="button" variant="outline" onClick={() => setProfileOpen(false)}>Cancelar</Button>
+          </div>
+        </form>
+      )}
       {user && ready && (
         <section className="panel mb-5 flex flex-wrap items-center gap-3 p-3">
           <span className="text-sm">Telegram · @Kanteiro_bot</span>

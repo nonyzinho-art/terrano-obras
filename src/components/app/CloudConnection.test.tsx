@@ -1,4 +1,4 @@
-import { render, screen, waitFor, cleanup, act } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, act, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CloudConnection } from "./CloudConnection";
 const mocks = vi.hoisted(() => ({
@@ -7,12 +7,16 @@ const mocks = vi.hoisted(() => ({
   load: vi.fn(),
   replace: vi.fn(),
   setAccess: vi.fn(),
+  signup: vi.fn(),
+  updateUser: vi.fn(),
   callback: null as
     null | ((event: string, session: null | { user: { id: string; email: string } }) => void),
 }));
 vi.mock("@/lib/supabase", () => ({
   getSupabase: () => ({
     auth: {
+      signUp: (args: unknown) => mocks.signup(args),
+      updateUser: (args: unknown) => mocks.updateUser(args),
       getSession: async () => ({ data: { session: mocks.session }, error: null }),
       onAuthStateChange: (fn: typeof mocks.callback) => {
         mocks.callback = fn;
@@ -52,8 +56,29 @@ describe("login obrigatório", () => {
     mocks.load.mockReset().mockResolvedValue({ works: [] });
     mocks.replace.mockClear();
     mocks.setAccess.mockClear();
+    mocks.signup.mockReset().mockResolvedValue({ data: { session: null }, error: null });
+    mocks.updateUser.mockReset().mockResolvedValue({ data: { user: { id: "u", email: "teste@example.invalid", user_metadata: { full_name: "Pessoa Teste" } } }, error: null });
   });
   afterEach(cleanup);
+  it("solicita nome ao criar conta e envia o nome ao cadastro", async () => {
+    render(<CloudConnection><p>Conteúdo protegido</p></CloudConnection>);
+    fireEvent.click(await screen.findByRole("button", { name: "Criar minha conta" }));
+    fireEvent.change(screen.getByLabelText("Nome completo"), { target: { value: "Pessoa Teste" } });
+    fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "teste@example.invalid" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "senha-teste-123" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Criar conta$/ }));
+    await waitFor(() => expect(mocks.signup).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ data: { full_name: "Pessoa Teste" } }) })));
+  });
+  it("permite salvar o nome da conta pelo perfil", async () => {
+    mocks.session = { user: { id: "u", email: "teste@example.invalid" } };
+    mocks.profile.active = true;
+    render(<CloudConnection><p>Conteúdo protegido</p></CloudConnection>);
+    fireEvent.click(await screen.findByRole("button", { name: "Meu perfil" }));
+    fireEvent.change(screen.getByLabelText("Nome completo"), { target: { value: "Pessoa Teste" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar nome" }));
+    await waitFor(() => expect(mocks.updateUser).toHaveBeenCalledWith({ data: { full_name: "Pessoa Teste" } }));
+    await screen.findByText("Nome atualizado.");
+  });
   it("não monta páginas nem menu antes do login", async () => {
     render(
       <CloudConnection>
