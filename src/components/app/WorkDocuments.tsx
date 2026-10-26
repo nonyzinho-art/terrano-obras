@@ -12,6 +12,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/lib/format";
+import { quoteRows as readRows } from "@/lib/quotes";
+import { getBudgetsByWork } from "@/lib/repository";
 type Doc = {
   id: string;
   title: string;
@@ -22,7 +24,8 @@ type Doc = {
   created_at: string;
 };
 const categories = ["Projeto", "Contrato", "Licença", "Orçamento", "Relatório", "Outros"];
-export function WorkDocuments({ workId }: { workId: string }) {
+type DocLink = { id: string; budget_id: string; document_id: string; work_id: string };
+export function WorkDocuments({ workId, budgetId }: { workId: string; budgetId?: string }) {
   const { profile, canWriteWork } = useAccess();
   const writable = canWriteWork(workId);
   const [docs, setDocs] = useState<Doc[]>([]),
@@ -35,6 +38,12 @@ export function WorkDocuments({ workId }: { workId: string }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [preview, setPreview] = useState<Doc | null>(null);
+  const [links, setLinks] = useState<DocLink[]>([]);
+  const [selectedDoc, setSelectedDoc] = useState("");
+  const linkedIds = new Set(
+    links.filter((link) => link.budget_id === budgetId).map((link) => link.document_id),
+  );
+  const budgets = getBudgetsByWork(workId);
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewError, setPreviewError] = useState("");
   useEffect(() => {
@@ -71,36 +80,79 @@ export function WorkDocuments({ workId }: { workId: string }) {
     setPreview(d);
   };
   const fileInput = useRef<HTMLInputElement>(null);
+  const fetchDocuments = async () => {
+    const [documents, associations] = await Promise.all([
+      readRows<Doc>("work_documents", "work_id", workId),
+      readRows<DocLink>("budget_documents", "work_id", workId),
+    ]);
+    return {
+      documents: documents.sort((a, b) => b.created_at.localeCompare(a.created_at)),
+      associations,
+    };
+  };
   const load = async () => {
-    const { data, error } = await getSupabase()
-      .from("work_documents")
-      .select("*")
-      .eq("work_id", workId)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    setDocs(data ?? []);
+    const { documents, associations } = await fetchDocuments();
+    setDocs(documents);
+    setLinks(associations);
     setLoaded(true);
   };
   useEffect(() => {
     let live = true;
-    getSupabase()
-      .from("work_documents")
-      .select("*")
-      .eq("work_id", workId)
-      .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
+    fetchDocuments()
+      .then(({ documents, associations }) => {
         if (live) {
-          if (error) setError("Não foi possível carregar os documentos.");
-          else {
-            setDocs(data ?? []);
-            setLoaded(true);
-          }
+          setDocs(documents);
+          setLinks(associations);
+          setLoaded(true);
         }
+      })
+      .catch(() => {
+        if (live) setError("Não foi possível carregar os documentos. Tente atualizar a página.");
       });
     return () => {
       live = false;
     };
-  }, [workId]);
+  }, [workId, budgetId]);
+  const linkDocument = async (documentId: string) => {
+    const { error } = await getSupabase().rpc("link_budget_document", {
+      p_budget: budgetId,
+      p_document: documentId,
+    });
+    if (error) throw error;
+  };
+  const associate = async () => {
+    if (!writable || !budgetId || !selectedDoc) return;
+    setBusy(true);
+    setError("");
+    try {
+      await linkDocument(selectedDoc);
+      await load();
+      setSelectedDoc("");
+    } catch {
+      setError("Não foi possível vincular o documento. Confira a obra e tente novamente.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const unlink = async (documentId: string) => {
+    if (!writable || !budgetId) return;
+    setBusy(true);
+    setError("");
+    try {
+      const { error } = await getSupabase()
+        .from("budget_documents")
+        .delete()
+        .eq("budget_id", budgetId)
+        .eq("document_id", documentId)
+        .eq("work_id", workId);
+      if (error) throw error;
+      await load();
+    } catch {
+      setError("Não foi possível remover o vínculo. O arquivo permanece salvo na obra.");
+    } finally {
+      setBusy(false);
+    }
+  };
   const upload = async () => {
     if (!file || !profile || !title.trim() || !writable) return;
     setBusy(true);
@@ -137,6 +189,7 @@ export function WorkDocuments({ workId }: { workId: string }) {
         size_bytes: file.size,
       });
       if (insertError) throw insertError;
+      if (budgetId) await linkDocument(id);
       setFile(null);
       setTitle("");
       if (fileInput.current) fileInput.current.value = "";
@@ -154,6 +207,18 @@ export function WorkDocuments({ workId }: { workId: string }) {
           if (fileInput.current) fileInput.current.value = "";
           try {
             await load();
+            if (budgetId) {
+              const { data: link } = await getSupabase()
+                .from("budget_documents")
+                .select("id")
+                .eq("budget_id", budgetId)
+                .eq("document_id", id)
+                .maybeSingle();
+              if (!link)
+                setError(
+                  "O documento foi salvo na obra, mas o vínculo não foi confirmado. Use Vincular documento da obra para associá-lo, sem reenviar o arquivo.",
+                );
+            }
           } catch {
             setError("Documento salvo. Atualize a página para carregar a lista.");
           }
@@ -192,16 +257,45 @@ export function WorkDocuments({ workId }: { workId: string }) {
   };
   const filtered = docs.filter(
     (d) =>
+      (!budgetId || linkedIds.has(d.id)) &&
       (!filter || d.category === filter) &&
       (!query ||
         (d.title + " " + d.filename).toLocaleLowerCase().includes(query.toLocaleLowerCase())),
   );
   return (
-    <Panel title="Documentos da obra">
+    <Panel title={budgetId ? "Documentos do orçamento" : "Documentos da obra"}>
       <p className="mb-4 text-sm text-muted-foreground">
-        Projetos, contratos, licenças e outros arquivos. Acesso restrito às pessoas autorizadas
-        nesta obra.
+        {budgetId
+          ? "Projetos, contratos e referências associados a este orçamento. Vincule arquivos já salvos na obra ou envie um novo documento."
+          : "Projetos, contratos, licenças e outros arquivos da obra. Um arquivo pode ser associado a vários orçamentos sem duplicação."}{" "}
+        Acesso restrito às pessoas autorizadas nesta obra.
       </p>
+      {budgetId && writable && (
+        <div className="mb-5 flex flex-wrap items-end gap-3 rounded-md border bg-muted/20 p-4">
+          <label className="min-w-48 flex-1 text-sm">
+            Documento já salvo na obra
+            <select
+              className="mt-1 h-9 w-full rounded-md border bg-card px-3"
+              aria-label="Documento da obra para vincular"
+              value={selectedDoc}
+              disabled={busy}
+              onChange={(e) => setSelectedDoc(e.target.value)}
+            >
+              <option value="">Selecione um documento</option>
+              {docs
+                .filter((d) => !linkedIds.has(d.id))
+                .map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.title} · {d.category}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <Button disabled={busy || !selectedDoc} onClick={() => void associate()}>
+            Vincular documento da obra
+          </Button>
+        </div>
+      )}
       {writable && (
         <form
           onSubmit={(e) => {
@@ -304,8 +398,32 @@ export function WorkDocuments({ workId }: { workId: string }) {
                   {d.category} · {d.filename} · {(d.size_bytes / 1024 / 1024).toFixed(2)} MB ·{" "}
                   {fmtDate(d.created_at)}
                 </p>
+                {!budgetId && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {links.some((link) => link.document_id === d.id)
+                      ? `Orçamentos: ${links
+                          .filter((link) => link.document_id === d.id)
+                          .map(
+                            (link) =>
+                              budgets.find((b) => b.id === link.budget_id)?.name ??
+                              "Orçamento vinculado",
+                          )
+                          .join(", ")}`
+                      : "Documento geral da obra"}
+                  </p>
+                )}
               </div>
               <div className="flex gap-2">
+                {budgetId && writable && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void unlink(d.id)}
+                  >
+                    Remover vínculo
+                  </Button>
+                )}
                 {/\.pdf$/i.test(d.filename) && (
                   <Button
                     size="sm"
