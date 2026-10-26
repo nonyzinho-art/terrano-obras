@@ -2,6 +2,11 @@
 // can be swapped for database/server calls (and reused by a Telegram bot).
 import { useSyncExternalStore } from "react";
 import * as demo from "./mock-data";
+import { measurementProgress } from "./measurement-progress";
+import { budgetAlerts } from "./budget-alerts";
+import type { BudgetMeasurement, BudgetMeasurementItem } from "./types";
+let measurements: BudgetMeasurement[] = [];
+let measurementItems: BudgetMeasurementItem[] = [];
 let {
   activities,
   budgets,
@@ -26,8 +31,10 @@ export type DataSnapshot = Pick<
   | "photos"
   | "services"
   | "works"
->;
+> & { measurements?: BudgetMeasurement[]; measurementItems?: BudgetMeasurementItem[] };
 export function replaceData(data: DataSnapshot | null) {
+  measurements = data?.measurements ?? [];
+  measurementItems = data?.measurementItems ?? [];
   cloudMode = data !== null;
   ({
     activities,
@@ -66,8 +73,62 @@ export function useDataVersion() {
 }
 
 export const isCloudMode = () => cloudMode;
-export const getWorks = () => works;
-export const getWork = (id: string) => works.find((w) => w.id === id);
+export const getMeasurementProgress = (workId: string, date = TODAY) =>
+  measurementProgress(
+    budgets.filter((b) => b.work_id === workId),
+    budgetItems,
+    measurements,
+    measurementItems,
+    date,
+  );
+export const getMeasurements = (budgetId: string) =>
+  measurements.filter((m) => m.budget_id === budgetId);
+export const getBudgetAlerts = (workId?: string) =>
+  budgetAlerts(
+    works.filter((w) => !workId || w.id === workId),
+    budgets,
+    budgetItems,
+    measurements,
+    measurementItems,
+    TODAY,
+  );
+export const getMeasurementItems = (measurementId: string) =>
+  measurementItems.filter((m) => m.measurement_id === measurementId);
+function measuredWork(w: import("./types").Work) {
+  if (!cloudMode) return w;
+  const progress = getMeasurementProgress(w.id);
+  const actual = Math.round(progress.actual * 10) / 10;
+  const planned = Math.round(progress.planned * 10) / 10;
+  return {
+    ...w,
+    actual_progress: actual,
+    planned_progress: planned,
+    status:
+      w.status === "concluida"
+        ? w.status
+        : progress.total > 0 && actual + 3 < planned
+          ? ("atrasada" as const)
+          : w.status,
+  };
+}
+export const getWorks = () => works.map(measuredWork);
+export const getWork = (id: string) => {
+  const w = works.find((w) => w.id === id);
+  return w ? measuredWork(w) : undefined;
+};
+export const getMeasurementSchedule = (workId: string) =>
+  getMeasurementProgress(workId)
+    .summaries.filter((s) => s.budget.planned_start && s.budget.planned_end)
+    .map((s) => ({
+      id: s.budget.id,
+      work_id: workId,
+      name: s.budget.name,
+      unit: "%",
+      planned_quantity: 100,
+      planned_start: s.budget.planned_start!,
+      planned_end: s.budget.planned_end!,
+      executed_quantity: s.actual,
+    }));
 export const getServices = (workId: string) => services.filter((s) => s.work_id === workId);
 export const getService = (id: string) => services.find((s) => s.id === id);
 export const getBudgetItems = () => budgetItems;
@@ -112,7 +173,7 @@ export const getLastReportDate = (workId: string) =>
     .sort()
     .at(-1) ?? null;
 export const getRunningServicesCount = (workId: string) =>
-  getServices(workId).filter(
+  (cloudMode ? getMeasurementSchedule(workId) : getServices(workId)).filter(
     (s) =>
       s.planned_start <= TODAY &&
       s.executed_quantity > 0 &&
@@ -183,8 +244,9 @@ export function serviceMetrics(s: import("./types").WorkService) {
   const now = Date.parse(TODAY),
     ps = Date.parse(s.planned_start),
     pe = Date.parse(s.planned_end);
-  const pct = (s.executed_quantity / s.planned_quantity) * 100;
-  const expected = Math.min(100, Math.max(0, ((now - ps) / (pe - ps)) * 100));
+  const pct = s.planned_quantity > 0 ? (s.executed_quantity / s.planned_quantity) * 100 : 0;
+  const expected =
+    pe === ps ? (now >= pe ? 100 : 0) : Math.min(100, Math.max(0, ((now - ps) / (pe - ps)) * 100));
   let situation: ServiceSituation = "em_andamento";
   if (pct >= 99.9) situation = "concluido";
   else if (pct + 3 < expected) situation = "atrasado";
@@ -194,6 +256,34 @@ export function serviceMetrics(s: import("./types").WorkService) {
 
 /** Planned vs executed S-curve (monthly), derived from the work's schedule. */
 export function getProgressCurve(workId: string) {
+  if (cloudMode) {
+    const work = getWork(workId)!;
+    const end = new Date((work.end_date > TODAY ? work.end_date : TODAY) + "T00:00:00Z");
+    const cursor = new Date(work.start_date + "T00:00:00Z");
+    cursor.setUTCDate(1);
+    const result: { mes: string; planejado: number; executado: number | null }[] = [];
+    while (cursor <= end && result.length < 600) {
+      const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0))
+        .toISOString()
+        .slice(0, 10);
+      const date = monthEnd > TODAY ? TODAY : monthEnd;
+      const plannedDate = monthEnd > work.end_date ? work.end_date : monthEnd;
+      result.push({
+        mes: cursor.toLocaleDateString("pt-BR", {
+          month: "short",
+          year: "2-digit",
+          timeZone: "UTC",
+        }),
+        planejado: getMeasurementProgress(workId, plannedDate).planned,
+        executado:
+          cursor.toISOString().slice(0, 10) <= TODAY
+            ? getMeasurementProgress(workId, date).actual
+            : null,
+      });
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+    return result;
+  }
   const w = getWork(workId)!;
   const t0 = Date.parse(w.start_date),
     t1 = Date.parse(w.end_date),

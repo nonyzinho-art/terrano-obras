@@ -34,6 +34,8 @@ export interface WorkService {
 
 export type BudgetStatus = "em_cotacao" | "cotado" | "aprovado";
 export interface Budget {
+  planned_start?: string | null;
+  planned_end?: string | null;
   execution_status?: "em_execucao" | "concluido";
   revision?: number;
   source_filename?: string;
@@ -59,6 +61,33 @@ export interface BudgetItem {
   executed_quantity: number;
   unit_price: number;
   total_price: number;
+}
+
+export interface BudgetMeasurement {
+  replaces_id?: string | null;
+  revision_reason?: string | null;
+  id: string;
+  budget_id: string;
+  work_id: string;
+  period_start: string;
+  period_end: string;
+  notes: string;
+  status: "rascunho" | "aprovada" | "cancelada" | "substituida";
+  created_by: string;
+  created_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  revision: number;
+}
+export interface BudgetMeasurementItem {
+  id: string;
+  measurement_id: string;
+  budget_id: string;
+  work_id: string;
+  budget_item_id: string;
+  quantity: number;
+  unit_price: number;
+  planned_quantity: number;
 }
 
 export type Weather = "Ensolarado" | "Nublado" | "Chuvoso" | "Parcialmente nublado";

@@ -1,4 +1,5 @@
 import { NewWorkDialog } from "@/components/app/NewWorkDialog";
+import { BudgetAlerts } from "@/components/app/BudgetAlerts";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { ArrowLeft, CalendarDays, FileSpreadsheet, ImageIcon, List, Plus } from "lucide-react";
@@ -26,6 +27,9 @@ import {
   getLastReportDate,
   getOpenIssues,
   getProgressCurve,
+  getMeasurementSchedule,
+  getMeasurementProgress,
+  isCloudMode,
   getReportItems,
   getReportPhotos,
   getReportsByWork,
@@ -238,8 +242,23 @@ function WorkDetail() {
 function Overview({ workId }: { workId: string }) {
   const w = getWork(workId)!;
   const curve = getProgressCurve(workId);
+  const schedule = isCloudMode() ? getMeasurementSchedule(workId) : getServices(workId);
+  const measured = getMeasurementProgress(workId);
   return (
     <div className="space-y-6">
+      <BudgetAlerts workId={workId} />
+      {isCloudMode() && (
+        <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+          Avanço ponderado pelo valor dos orçamentos aprovados, com produção das medições aprovadas.
+          Planejamento linear nas datas definidas por orçamento.{" "}
+          {
+            measured.summaries.filter((s) => !s.budget.planned_start || !s.budget.planned_end)
+              .length
+          }{" "}
+          orçamentos aprovados ainda sem datas planejadas; não contribuem para o previsto até o
+          planejamento ser definido.
+        </p>
+      )}
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
         <Panel
           title="Avanço físico geral — planejado x executado"
@@ -316,12 +335,12 @@ function Overview({ workId }: { workId: string }) {
       </div>
       <WorkBudgets workId={workId} />
       <Panel title="Cronograma físico">
-        {getServices(workId).length ? (
-          <Gantt work={w} services={getServices(workId)} />
+        {schedule.length ? (
+          <Gantt work={w} services={schedule} />
         ) : (
           <p className="py-4 text-sm text-muted-foreground">
-            Ainda não há serviços com datas planejadas para esta obra. Os itens do orçamento estão
-            disponíveis acima; o cronograma depende das datas de início e fim dos serviços.
+            Defina as datas planejadas na aba Medições de cada orçamento aprovado para visualizar o
+            cronograma e comparar com a execução aprovada.
           </p>
         )}
       </Panel>
@@ -375,10 +394,16 @@ function WorkBudgets({ workId }: { workId: string }) {
 }
 
 function Evolution({ workId }: { workId: string }) {
-  const rows = getServices(workId).map((s) => ({ s, ...serviceMetrics(s) }));
+  const rows = (isCloudMode() ? getMeasurementSchedule(workId) : getServices(workId)).map((s) => ({
+    s,
+    ...serviceMetrics(s),
+  }));
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
-      <Panel title="Quantitativos por serviço" className="[&>div:last-child]:p-0">
+      <Panel
+        title={isCloudMode() ? "Avanço por orçamento planejado" : "Quantitativos por serviço"}
+        className="[&>div:last-child]:p-0"
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

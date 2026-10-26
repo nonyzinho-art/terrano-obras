@@ -1,6 +1,8 @@
 import { getSupabase } from "./supabase";
 import { replaceData, type DataSnapshot } from "./repository";
 import type { DailyReport, DailyReportItem, Photo } from "./types";
+import { approvedQuantities } from "./measurement-progress";
+import type { BudgetMeasurement, BudgetMeasurementItem } from "./types";
 
 async function rows(table: string) {
   const all: Record<string, unknown>[] = [];
@@ -16,19 +18,31 @@ async function rows(table: string) {
   }
 }
 export async function loadCloudData() {
-  const [works, budgets, budgetItems, services, dailyReports, dailyReportItems, rawPhotos, issues] =
-    await Promise.all(
-      [
-        "works",
-        "budgets",
-        "budget_items",
-        "service_execution",
-        "daily_reports",
-        "daily_report_items",
-        "photos",
-        "issues",
-      ].map(rows),
-    );
+  const [
+    works,
+    budgets,
+    budgetItems,
+    services,
+    dailyReports,
+    dailyReportItems,
+    rawPhotos,
+    issues,
+    measurements,
+    measurementItems,
+  ] = await Promise.all(
+    [
+      "works",
+      "budgets",
+      "budget_items",
+      "service_execution",
+      "daily_reports",
+      "daily_report_items",
+      "photos",
+      "issues",
+      "budget_measurements",
+      "budget_measurement_items",
+    ].map(rows),
+  );
   const photos = await Promise.all(
     rawPhotos!.map(async (p) => {
       const { data, error } = await getSupabase()
@@ -38,10 +52,20 @@ export async function loadCloudData() {
       return { ...p, file_url: data.signedUrl } as Photo;
     }),
   );
+  const quantities = approvedQuantities(
+    measurements as unknown as BudgetMeasurement[],
+    measurementItems as unknown as BudgetMeasurementItem[],
+    new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }),
+  );
   const snapshot = {
+    measurements,
+    measurementItems,
     works,
     budgets,
-    budgetItems: budgetItems!.map((b) => ({ ...b, executed_quantity: 0 })),
+    budgetItems: budgetItems!.map((b) => ({
+      ...b,
+      executed_quantity: quantities.get(String(b["id"])) ?? 0,
+    })),
     services,
     dailyReports,
     dailyReportItems,
