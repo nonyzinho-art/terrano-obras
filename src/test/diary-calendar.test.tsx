@@ -62,8 +62,12 @@ describe("Diário calendar", () => {
         defaultDate="2026-08-27"
       />,
     );
-    fireEvent.change(screen.getByLabelText("Quantidade de trabalhadores"), { target: { value: "3" } });
-    fireEvent.change(screen.getByLabelText("Quantidade de equipamentos"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("Quantidade de trabalhadores"), {
+      target: { value: "3" },
+    });
+    fireEvent.change(screen.getByLabelText("Quantidade de equipamentos"), {
+      target: { value: "0" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }));
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -85,8 +89,12 @@ describe("Diário calendar", () => {
       "Condições da frente de serviço, interferências, ocorrências…",
     );
     fireEvent.change(observations, { target: { value: "Observação que precisa ser preservada" } });
-    fireEvent.change(screen.getByLabelText("Quantidade de trabalhadores"), { target: { value: "3" } });
-    fireEvent.change(screen.getByLabelText("Quantidade de equipamentos"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("Quantidade de trabalhadores"), {
+      target: { value: "3" },
+    });
+    fireEvent.change(screen.getByLabelText("Quantidade de equipamentos"), {
+      target: { value: "0" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }));
     await waitFor(() => expect(errorToast).toHaveBeenCalledWith("Falha ao salvar"));
     expect(onOpenChange).not.toHaveBeenCalled();

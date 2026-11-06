@@ -36,19 +36,17 @@ const measurement: BudgetMeasurement = {
 };
 describe("download do relatório de medição", () => {
   beforeEach(() => {
-    mocks.rpc
-      .mockReset()
-      .mockResolvedValue({
-        data: [
-          {
-            author_name: "Autor",
-            author_email: "autor@example.invalid",
-            approver_name: "Aprovador",
-            approver_email: "aprovador@example.invalid",
-          },
-        ],
-        error: null,
-      });
+    mocks.rpc.mockReset().mockResolvedValue({
+      data: [
+        {
+          author_name: "Autor",
+          author_email: "autor@example.invalid",
+          approver_name: "Aprovador",
+          approver_email: "aprovador@example.invalid",
+        },
+      ],
+      error: null,
+    });
     mocks.read.mockReset().mockImplementation(async (table) =>
       table === "budget_measurements"
         ? [

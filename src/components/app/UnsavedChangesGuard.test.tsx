@@ -17,7 +17,7 @@ function makeRouter() {
   const editor = createRoute({
     getParentRoute: () => root,
     path: "/",
-    component: () => {
+    component: function Editor() {
       const [text, setText] = useState("");
       return (
         <>

@@ -12,13 +12,19 @@ const buildId = randomUUID();
 export default defineConfig({
   vite: {
     define: { __TERRANO_BUILD_ID__: JSON.stringify(buildId) },
-    plugins: [{
-      name: "terrano-version",
-      apply: "build",
-      generateBundle() {
-        this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ version: buildId }) });
+    plugins: [
+      {
+        name: "terrano-version",
+        apply: "build",
+        generateBundle() {
+          this.emitFile({
+            type: "asset",
+            fileName: "version.json",
+            source: JSON.stringify({ version: buildId }),
+          });
+        },
       },
-    }],
+    ],
   },
   nitro: { preset: "vercel" },
   tanstackStart: {

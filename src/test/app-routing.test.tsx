@@ -12,7 +12,10 @@ describe("App routing", () => {
     expect(router.matchRoutes("/orcamentos").at(-1)?.routeId).toBe("/orcamentos/");
     const detail = router.matchRoutes("/orcamentos/brisas-do-sul/brisas-do-sul-drenagem").at(-1);
     expect(detail?.routeId).toBe("/orcamentos/$obraId/$orcamentoId");
-    expect(detail?.params).toMatchObject({ obraId: "brisas-do-sul", orcamentoId: "brisas-do-sul-drenagem" });
+    expect(detail?.params).toMatchObject({
+      obraId: "brisas-do-sul",
+      orcamentoId: "brisas-do-sul-drenagem",
+    });
   });
 
   it("matches a page for / instead of falling back to not found", () => {
