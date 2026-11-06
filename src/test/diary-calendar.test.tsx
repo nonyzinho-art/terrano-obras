@@ -4,9 +4,14 @@ import { ReportCalendar } from "@/components/app/ReportCalendar";
 import { NewReportDialog } from "@/components/app/NewReportDialog";
 import { toast } from "sonner";
 import * as repository from "@/lib/repository";
+import { fixtureSnapshot } from "@/test/fixtures";
 
 import { setAccess } from "@/lib/access";
 beforeEach(() => {
+  // The fixtures describe 05/10/2026; fix the clock so "today" matches them.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-05T12:00:00-03:00"));
+  repository.replaceData(fixtureSnapshot());
   setAccess(
     { user_id: "test-engineer", role: "engenheiro", active: true },
     repository.getWorks().map((w) => ({ work_id: w.id, can_write: true })),
@@ -16,6 +21,8 @@ afterEach(() => {
   setAccess(null);
   cleanup();
   vi.restoreAllMocks();
+  repository.replaceData(null);
+  vi.useRealTimers();
 });
 
 describe("Diário calendar", () => {
@@ -52,7 +59,7 @@ describe("Diário calendar", () => {
     expect(onSelect).toHaveBeenCalledWith(report);
   });
   it("creates a draft with the selected work and date, including a completed work", async () => {
-    const create = vi.spyOn(repository, "createDailyReport").mockReturnValue("test-report");
+    const create = vi.spyOn(repository, "createDailyReport").mockResolvedValue("test-report");
     const onOpenChange = vi.fn();
     render(
       <NewReportDialog

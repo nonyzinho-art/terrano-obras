@@ -128,7 +128,7 @@ describe("login obrigatório", () => {
         <p>Conteúdo protegido</p>
       </CloudConnection>,
     );
-    await screen.findByText("Seu cadastro aguarda liberação do administrador.");
+    await screen.findByText("Seu acesso está desativado. Fale com o administrador do sistema.");
     expect(screen.queryByText("Conteúdo protegido")).not.toBeInTheDocument();
     expect(mocks.load).not.toHaveBeenCalled();
   });
@@ -177,7 +177,7 @@ describe("login obrigatório", () => {
     await act(async () => {
       mocks.callback?.("SIGNED_IN", { user: { id: "outro", email: "outro@example.invalid" } });
     });
-    await screen.findByText("Seu cadastro aguarda liberação do administrador.");
+    await screen.findByText("Seu acesso está desativado. Fale com o administrador do sistema.");
     expect(screen.queryByText("Conteúdo protegido")).not.toBeInTheDocument();
   });
   it("atualiza em segundo plano preservando a página e os campos digitados", async () => {

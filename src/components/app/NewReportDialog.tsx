@@ -19,7 +19,6 @@ import {
   createDailyReport,
   getServices,
   getWorks,
-  isCloudMode,
   TODAY,
   getReportItems,
   getReportPhotos,
@@ -29,7 +28,6 @@ import {
   getItemsByBudget,
 } from "@/lib/repository";
 import { parseAmount } from "@/lib/budget-import";
-import { users } from "@/lib/mock-data";
 import type { Weather, DailyReport } from "@/lib/types";
 
 const WEATHERS: Weather[] = ["Ensolarado", "Parcialmente nublado", "Nublado", "Chuvoso"];
@@ -63,9 +61,7 @@ export function NewReportDialog({
   const [recordId, setRecordId] = useState(() => existingReport?.id ?? crypto.randomUUID());
   const [date, setDate] = useState(existingReport?.date ?? defaultDate ?? TODAY);
   const [weather, setWeather] = useState<Weather>(existingReport?.weather ?? "Ensolarado");
-  const [resp, setResp] = useState(
-    existingReport?.responsible_user ?? (isCloudMode() ? "" : users[0]!.name),
-  );
+  const [resp, setResp] = useState(existingReport?.responsible_user ?? "");
   const [workers, setWorkers] = useState(
     existingReport ? String(existingReport.workers_quantity) : "",
   );
@@ -89,11 +85,9 @@ export function NewReportDialog({
   const [saving, setSaving] = useState(false);
   const existingPhotos = existingReport ? getReportPhotos(existingReport.id) : [];
   const existingIssues = existingReport ? getReportIssues(existingReport.id) : [];
-  const budgets = isCloudMode()
-    ? getMeasurementProgress(workId)
-        .summaries.map((s) => s.budget)
-        .filter((b) => b.execution_status !== "concluido")
-    : [];
+  const budgets = getMeasurementProgress(workId)
+    .summaries.map((s) => s.budget)
+    .filter((b) => b.execution_status !== "concluido");
   const originalBudget = existingReport?.budget_id
     ? getBudget(workId, existingReport.budget_id)
     : undefined;
@@ -160,7 +154,7 @@ export function NewReportDialog({
       setRecordId(crypto.randomUUID());
       setWorkers("");
       setEquip("");
-      setResp(isCloudMode() ? "" : users[0]!.name);
+      setResp("");
       setWeather("Ensolarado");
       setDate(defaultDate ?? TODAY);
       setBudgetId("");
@@ -359,20 +353,12 @@ export function NewReportDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Responsável</Label>
-            {isCloudMode() ? (
-              <Input
-                aria-label="Responsável do diário"
-                placeholder="Seu nome será usado se deixar em branco"
-                value={resp}
-                onChange={(e) => setResp(e.target.value)}
-              />
-            ) : (
-              <select className={selectCls} value={resp} onChange={(e) => setResp(e.target.value)}>
-                {users.map((u) => (
-                  <option key={u.id}>{u.name}</option>
-                ))}
-              </select>
-            )}
+            <Input
+              aria-label="Responsável do diário"
+              placeholder="Seu nome será usado se deixar em branco"
+              value={resp}
+              onChange={(e) => setResp(e.target.value)}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

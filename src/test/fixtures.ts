@@ -10,7 +10,7 @@ import type {
   Work,
   WorkService,
   Weather,
-} from "./types";
+} from "@/lib/types";
 import p1 from "@/assets/obra-1.jpg";
 import p2 from "@/assets/obra-2.jpg";
 import p3 from "@/assets/obra-3.jpg";
@@ -565,3 +565,18 @@ export const activities: Activity[] = [
     kind: "servico",
   },
 ];
+
+/** Snapshot of the demo data, in the shape loaded from Supabase. Fresh copy on each call. */
+export function fixtureSnapshot(): import("@/lib/repository").DataSnapshot {
+  return structuredClone({
+    activities,
+    budgets,
+    budgetItems,
+    dailyReportItems,
+    dailyReports,
+    issues,
+    photos,
+    services,
+    works,
+  });
+}

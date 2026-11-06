@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import * as demo from "./mock-data";
+import * as demo from "@/test/fixtures";
 import { replaceData, getWork, getWorkProgressDisplay, getProgressCurve } from "./repository";
 import type { Budget, BudgetItem, BudgetMeasurement } from "./types";
 const work = {

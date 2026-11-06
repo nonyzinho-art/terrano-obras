@@ -292,7 +292,8 @@ export function CloudConnection({ children }: { children: ReactNode }) {
         >
           <h2 className="font-semibold">Terrano Obras — Acesso</h2>
           <p className="text-sm text-muted-foreground">
-            Entre com seu e-mail e senha. Novos cadastros têm acesso automático ao sistema.
+            Entre com seu e-mail e senha. Novos cadastros começam sem obras liberadas; o
+            administrador libera o acesso a cada obra.
           </p>
           {signupMode && (
             <label className="block text-sm">
@@ -356,7 +357,9 @@ export function CloudConnection({ children }: { children: ReactNode }) {
         <section className="panel w-full max-w-md space-y-4 p-6">
           <h1 className="font-semibold">Terrano Obras</h1>
           <p>
-            {!ready ? "Carregando seu acesso…" : "Seu cadastro aguarda liberação do administrador."}
+            {!ready
+              ? "Carregando seu acesso…"
+              : "Seu acesso está desativado. Fale com o administrador do sistema."}
           </p>
           <p className="text-sm text-muted-foreground">{user.email}</p>
           {message && <p role="alert">{message}</p>}

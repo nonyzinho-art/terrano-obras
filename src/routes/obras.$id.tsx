@@ -31,7 +31,6 @@ import {
   getProgressCurve,
   getMeasurementSchedule,
   getMeasurementProgress,
-  isCloudMode,
   getReportItems,
   getReportPhotos,
   getReportsByWork,
@@ -257,21 +256,19 @@ function WorkDetail() {
 function Overview({ workId }: { workId: string }) {
   const w = getWork(workId)!;
   const curve = getProgressCurve(workId);
-  const schedule = isCloudMode() ? getMeasurementSchedule(workId) : getServices(workId);
+  const schedule = getMeasurementSchedule(workId);
   const measured = getMeasurementProgress(workId);
   return (
     <div className="space-y-6">
       <BudgetAlerts workId={workId} />
-      {isCloudMode() && (
-        <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-          Avanço ponderado pelo valor dos orçamentos aprovados, com produção das medições aprovadas.
-          Planejamento linear nas datas definidas por orçamento.{" "}
-          {measured.summaries.filter((s) => !s.hasPlan).length} orçamentos aprovados ainda sem datas
-          planejadas válidas.
-          {!measured.comparable &&
-            " A curva planejada geral fica indisponível enquanto a base estiver incompleta. Confira a cobertura e as pendências antes de comparar o avanço."}
-        </p>
-      )}
+      <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+        Avanço ponderado pelo valor dos orçamentos aprovados, com produção das medições aprovadas.
+        Planejamento linear nas datas definidas por orçamento.{" "}
+        {measured.summaries.filter((s) => !s.hasPlan).length} orçamentos aprovados ainda sem datas
+        planejadas válidas.
+        {!measured.comparable &&
+          " A curva planejada geral fica indisponível enquanto a base estiver incompleta. Confira a cobertura e as pendências antes de comparar o avanço."}
+      </p>
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
         <Panel
           title="Avanço físico geral — planejado x executado"
@@ -407,16 +404,13 @@ function WorkBudgets({ workId }: { workId: string }) {
 }
 
 function Evolution({ workId }: { workId: string }) {
-  const rows = (isCloudMode() ? getMeasurementSchedule(workId) : getServices(workId)).map((s) => ({
+  const rows = getMeasurementSchedule(workId).map((s) => ({
     s,
     ...serviceMetrics(s),
   }));
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
-      <Panel
-        title={isCloudMode() ? "Avanço por orçamento planejado" : "Quantitativos por serviço"}
-        className="[&>div:last-child]:p-0"
-      >
+      <Panel title="Avanço por orçamento planejado" className="[&>div:last-child]:p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

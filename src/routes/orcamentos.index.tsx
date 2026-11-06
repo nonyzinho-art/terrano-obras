@@ -13,7 +13,6 @@ import { BudgetStatusBadge } from "@/components/app/BudgetStatusBadge";
 import { getWorks, getBudgetsByWork, getBudgetSummary, useDataVersion } from "@/lib/repository";
 import { BudgetImportDialog } from "@/components/app/BudgetImportDialog";
 import { Button } from "@/components/ui/button";
-import { isCloudMode } from "@/lib/repository";
 import { fmtBRL, fmtDate } from "@/lib/format";
 
 export const Route = createFileRoute("/orcamentos/")({
@@ -51,11 +50,6 @@ function Orcamentos() {
         >
           Importar orçamento
         </Button>
-        {!isCloudMode() && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Você pode conferir a prévia. Entre no sistema para salvar o orçamento.
-          </p>
-        )}
       </div>
       {importing && <BudgetImportDialog open onOpenChange={setImporting} />}
       <Accordion type="multiple" value={expanded} onValueChange={setExpanded} className="space-y-4">
@@ -128,9 +122,7 @@ function Orcamentos() {
         <p className="panel p-8 text-center text-muted-foreground">Nenhuma obra cadastrada.</p>
       )}
       <p className="mt-4 text-xs text-muted-foreground">
-        {isCloudMode()
-          ? "Orçamentos importados da sua conta. Revisões anteriores são preservadas."
-          : "Dados de demonstração. Status de cotação e datas são ilustrativos."}
+        Orçamentos importados da sua conta. Revisões anteriores são preservadas.
       </p>
     </>
   );

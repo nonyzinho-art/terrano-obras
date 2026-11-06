@@ -1,42 +1,55 @@
-// Data access layer. Today it reads in-memory mock data; later these functions
-// can be swapped for database/server calls (and reused by a Telegram bot).
+// Data access layer. Holds the snapshot loaded from Supabase after login
+// (see cloud-data.ts) and derives the indicators shown on each page.
 import { useSyncExternalStore } from "react";
-import * as demo from "./mock-data";
 import { measurementProgress, approvedQuantities } from "./measurement-progress";
 import { budgetAlerts } from "./budget-alerts";
 import { importRevisionProtection } from "./budget-revisions";
-import type { BudgetMeasurement, BudgetMeasurementItem } from "./types";
+import type {
+  Activity,
+  Budget,
+  BudgetItem,
+  BudgetMeasurement,
+  BudgetMeasurementItem,
+  DailyReport,
+  DailyReportItem,
+  Issue,
+  Photo,
+  Work,
+  WorkService,
+  WorkStatus,
+} from "./types";
+
+export type DataSnapshot = {
+  activities: Activity[];
+  budgets: Budget[];
+  budgetItems: BudgetItem[];
+  dailyReportItems: DailyReportItem[];
+  dailyReports: DailyReport[];
+  issues: Issue[];
+  photos: Photo[];
+  services: WorkService[];
+  works: Work[];
+  measurements?: BudgetMeasurement[];
+  measurementItems?: BudgetMeasurementItem[];
+};
+
+const brazilToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+let activities: Activity[] = [];
+let budgets: Budget[] = [];
+let budgetItems: BudgetItem[] = [];
+let dailyReportItems: DailyReportItem[] = [];
+let dailyReports: DailyReport[] = [];
+let issues: Issue[] = [];
+let photos: Photo[] = [];
+let services: WorkService[] = [];
+let works: Work[] = [];
 let measurements: BudgetMeasurement[] = [];
 let measurementItems: BudgetMeasurementItem[] = [];
-let {
-  activities,
-  budgets,
-  budgetItems,
-  dailyReportItems,
-  dailyReports,
-  issues,
-  photos,
-  services,
-  works,
-} = demo;
-let TODAY: string = demo.TODAY;
-let cloudMode = false;
-export type DataSnapshot = Pick<
-  typeof demo,
-  | "activities"
-  | "budgets"
-  | "budgetItems"
-  | "dailyReportItems"
-  | "dailyReports"
-  | "issues"
-  | "photos"
-  | "services"
-  | "works"
-> & { measurements?: BudgetMeasurement[]; measurementItems?: BudgetMeasurementItem[] };
+let TODAY: string = brazilToday();
+
+/** Loads the account's data. `null` clears it (logout or account switch). */
 export function replaceData(data: DataSnapshot | null) {
-  measurements = data?.measurements ?? [];
-  measurementItems = data?.measurementItems ?? [];
-  cloudMode = data !== null;
   ({
     activities,
     budgets,
@@ -47,14 +60,22 @@ export function replaceData(data: DataSnapshot | null) {
     photos,
     services,
     works,
-  } = data ?? demo);
-  if (cloudMode) {
-    const date = new Date();
-    TODAY = date.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-  } else TODAY = demo.TODAY;
+  } = data ?? {
+    activities: [],
+    budgets: [],
+    budgetItems: [],
+    dailyReportItems: [],
+    dailyReports: [],
+    issues: [],
+    photos: [],
+    services: [],
+    works: [],
+  });
+  measurements = data?.measurements ?? [];
+  measurementItems = data?.measurementItems ?? [];
+  TODAY = brazilToday();
   emit();
 }
-import type { DailyReport, DailyReportItem, Issue, Photo, WorkStatus } from "./types";
 
 let version = 0;
 export const getDataRevision = () => version;
@@ -74,7 +95,6 @@ export function useDataVersion() {
   );
 }
 
-export const isCloudMode = () => cloudMode;
 export const getMeasurementProgress = (workId: string, date = TODAY) =>
   measurementProgress(
     budgets.filter((b) => b.work_id === workId),
@@ -104,35 +124,28 @@ export const getApprovedBudgetQuantities = (budgetId: string) =>
   );
 export function getWorkProgressDisplay(work: import("./types").Work) {
   const p = getMeasurementProgress(work.id);
-  const actualKnown = !cloudMode || p.hasValue;
-  const comparable = !cloudMode || p.comparable;
   return {
-    actual:
-      cloudMode && p.unreconciled
-        ? "Revisão a conferir"
-        : actualKnown
-          ? `${work.actual_progress}%`
-          : "Sem base de valor",
-    planned: !cloudMode || p.hasPlan ? `${work.planned_progress}%` : "Não informado",
-    actualKnown: actualKnown && (!cloudMode || !p.unreconciled),
-    comparable,
-    coverage:
-      cloudMode && p.unreconciled
-        ? "Há medições aprovadas em versões anteriores. Reconcilie a execução antes de usar o avanço geral."
-        : !cloudMode
-          ? ""
-          : !p.summaries.length
-            ? "Sem orçamento aprovado"
-            : !p.hasValue
-              ? "Sem base positiva para ponderar o avanço" +
-                (p.pendingCount ? ` · ${p.pendingCount} itens pendentes` : "")
-              : `Planejamento cobre ${p.planCoverage.toFixed(1).replace(".", ",")}% do valor conhecido` +
-                (p.pendingCount ? ` · ${p.pendingCount} itens pendentes; valores parciais` : "") +
-                (!p.comparable ? " · desvio geral indisponível" : ""),
+    actual: p.unreconciled
+      ? "Revisão a conferir"
+      : p.hasValue
+        ? `${work.actual_progress}%`
+        : "Sem base de valor",
+    planned: p.hasPlan ? `${work.planned_progress}%` : "Não informado",
+    actualKnown: p.hasValue && !p.unreconciled,
+    comparable: p.comparable,
+    coverage: p.unreconciled
+      ? "Há medições aprovadas em versões anteriores. Reconcilie a execução antes de usar o avanço geral."
+      : !p.summaries.length
+        ? "Sem orçamento aprovado"
+        : !p.hasValue
+          ? "Sem base positiva para ponderar o avanço" +
+            (p.pendingCount ? ` · ${p.pendingCount} itens pendentes` : "")
+          : `Planejamento cobre ${p.planCoverage.toFixed(1).replace(".", ",")}% do valor conhecido` +
+            (p.pendingCount ? ` · ${p.pendingCount} itens pendentes; valores parciais` : "") +
+            (!p.comparable ? " · desvio geral indisponível" : ""),
   };
 }
-function measuredWork(w: import("./types").Work) {
-  if (!cloudMode) return w;
+function measuredWork(w: Work) {
   const progress = getMeasurementProgress(w.id);
   const actual = Math.round(progress.actual * 10) / 10;
   const planned = Math.round(progress.planned * 10) / 10;
@@ -167,8 +180,7 @@ export const getMeasurementSchedule = (workId: string) =>
       executed_quantity: s.actual,
     }));
 export const getServices = (workId: string) => services.filter((s) => s.work_id === workId);
-export const getScheduleServicesCount = (workId: string) =>
-  (cloudMode ? getMeasurementSchedule(workId) : getServices(workId)).length;
+export const getScheduleServicesCount = (workId: string) => getMeasurementSchedule(workId).length;
 export const getService = (id: string | null) => services.find((s) => s.id === id);
 export const getBudgetItems = () => budgetItems;
 export const getBudgetsByWork = (workId: string) => budgets.filter((b) => b.work_id === workId);
@@ -221,7 +233,7 @@ export const getLastReportDate = (workId: string) =>
     .sort()
     .at(-1) ?? null;
 export const getRunningServicesCount = (workId: string) =>
-  (cloudMode ? getMeasurementSchedule(workId) : getServices(workId)).filter(
+  getMeasurementSchedule(workId).filter(
     (s) =>
       s.planned_start <= TODAY &&
       s.executed_quantity > 0 &&
@@ -238,50 +250,7 @@ export type DiarySaveInput = {
   issues: string[];
 };
 export function createDailyReport(input: DiarySaveInput) {
-  if (cloudMode)
-    return import("./cloud-data").then(({ saveCloudReport }) => saveCloudReport(input));
-  const id = input.id ?? `dr-new-${Date.now()}`;
-  const previous = dailyReports.find((r) => r.id === id);
-  if (previous) {
-    if (previous.status !== "rascunho")
-      throw new Error("Diário finalizado é somente para consulta.");
-    dailyReports = dailyReports.filter((r) => r.id !== id);
-    dailyReportItems = dailyReportItems.filter((i) => i.daily_report_id !== id);
-  }
-  dailyReports.push({ ...previous, ...input.report, id, revision: (previous?.revision ?? 0) + 1 });
-  input.items.forEach((it, k) => {
-    dailyReportItems.push({ ...it, id: `${id}-i${k}`, daily_report_id: id });
-    const svc = services.find((s) => s.id === it.service_id);
-    if (svc && input.report.status === "finalizado") svc.executed_quantity += it.executed_quantity;
-  });
-  input.photoUrls.forEach((url, k) =>
-    photos.push({
-      id: `${id}-p${k}`,
-      daily_report_id: id,
-      file_url: url,
-      description: "",
-      created_at: new Date().toISOString(),
-    } as Photo),
-  );
-  input.issues.forEach((d, k) =>
-    issues.push({
-      id: `${id}-is${k}`,
-      work_id: input.report.work_id,
-      daily_report_id: id,
-      description: d,
-      status: "aberta",
-      created_at: input.report.date,
-    } as Issue),
-  );
-  activities.unshift({
-    id,
-    work_id: input.report.work_id,
-    text: `${input.report.responsible_user} registrou diário com ${input.items.length} serviço(s)`,
-    at: new Date().toISOString(),
-    kind: "diario",
-  });
-  emit();
-  return id;
+  return import("./cloud-data").then(({ saveCloudReport }) => saveCloudReport(input));
 }
 
 export const STATUS_LABEL: Record<WorkStatus, string> = {
@@ -315,59 +284,32 @@ export function serviceMetrics(s: import("./types").WorkService) {
 
 /** Planned vs executed S-curve (monthly), derived from the work's schedule. */
 export function getProgressCurve(workId: string) {
-  if (cloudMode) {
-    const work = getWork(workId)!;
-    const end = new Date((work.end_date > TODAY ? work.end_date : TODAY) + "T00:00:00Z");
-    const cursor = new Date(work.start_date + "T00:00:00Z");
-    cursor.setUTCDate(1);
-    const result: { mes: string; planejado: number | null; executado: number | null }[] = [];
-    while (cursor <= end && result.length < 600) {
-      const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0))
-        .toISOString()
-        .slice(0, 10);
-      const date = monthEnd > TODAY ? TODAY : monthEnd;
-      const plannedDate = monthEnd > work.end_date ? work.end_date : monthEnd;
-      result.push({
-        mes: cursor.toLocaleDateString("pt-BR", {
-          month: "short",
-          year: "2-digit",
-          timeZone: "UTC",
-        }),
-        planejado: getMeasurementProgress(workId, plannedDate).comparable
-          ? getMeasurementProgress(workId, plannedDate).planned
+  const work = getWork(workId)!;
+  const end = new Date((work.end_date > TODAY ? work.end_date : TODAY) + "T00:00:00Z");
+  const cursor = new Date(work.start_date + "T00:00:00Z");
+  cursor.setUTCDate(1);
+  const result: { mes: string; planejado: number | null; executado: number | null }[] = [];
+  while (cursor <= end && result.length < 600) {
+    const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0))
+      .toISOString()
+      .slice(0, 10);
+    const date = monthEnd > TODAY ? TODAY : monthEnd;
+    const plannedDate = monthEnd > work.end_date ? work.end_date : monthEnd;
+    const planned = getMeasurementProgress(workId, plannedDate);
+    const actual = getMeasurementProgress(workId, date);
+    result.push({
+      mes: cursor.toLocaleDateString("pt-BR", {
+        month: "short",
+        year: "2-digit",
+        timeZone: "UTC",
+      }),
+      planejado: planned.comparable ? planned.planned : null,
+      executado:
+        cursor.toISOString().slice(0, 10) <= TODAY && actual.hasValue && !actual.unreconciled
+          ? actual.actual
           : null,
-        executado:
-          cursor.toISOString().slice(0, 10) <= TODAY &&
-          getMeasurementProgress(workId, date).hasValue &&
-          !getMeasurementProgress(workId, date).unreconciled
-            ? getMeasurementProgress(workId, date).actual
-            : null,
-      });
-      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
-    }
-    return result;
-  }
-  const w = getWork(workId)!;
-  const t0 = Date.parse(w.start_date),
-    t1 = Date.parse(w.end_date),
-    now = Date.parse(TODAY);
-  const out: { mes: string; planejado: number; executado: number | null }[] = [];
-  const d = new Date(t0);
-  d.setUTCDate(1);
-  const M = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-  const scurve = (x: number) => 100 * (x * x * (3 - 2 * x));
-  const nowX = Math.min(1, Math.max(0, (now - t0) / (t1 - t0)));
-  const k = w.planned_progress > 0 ? w.actual_progress / Math.max(1, scurve(nowX)) : 1;
-  while (d.getTime() <= t1 + 31 * 86400000) {
-    const t = Math.min(t1, d.getTime());
-    const x = Math.min(1, Math.max(0, (t - t0) / (t1 - t0)));
-    out.push({
-      mes: `${M[d.getUTCMonth()]}/${String(d.getUTCFullYear()).slice(2)}`,
-      planejado: Math.round(scurve(x) * 10) / 10,
-      executado: t <= now ? Math.round(Math.min(100, scurve(x) * k) * 10) / 10 : null,
     });
-    d.setUTCMonth(d.getUTCMonth() + 1);
-    if (t === t1) break;
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
-  return out;
+  return result;
 }

@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import {
   getWorks,
   replaceData,
-  isCloudMode,
   getBudgetsByWork,
   getImportRevisionProtection,
   useDataVersion,
@@ -111,7 +110,6 @@ export function BudgetImportDialog({
     setBusy(true);
     setError("");
     try {
-      if (!isCloudMode()) throw new Error("Entre no sistema para salvar o orçamento.");
       const { data, error: rpcError } = await getSupabase().rpc("import_budget", {
         p_key: key.current,
         p_work: work,
@@ -396,18 +394,12 @@ export function BudgetImportDialog({
             <option key={name} value={name} />
           ))}
         </datalist>
-        {!isCloudMode() && (
-          <p className="text-sm text-muted-foreground">
-            Prévia local. Entre no sistema para salvar na sua obra.
-          </p>
-        )}
         <div className="flex justify-end gap-2 border-t pt-4">
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
           <Button
             disabled={
-              !isCloudMode() ||
               busy ||
               saved ||
               protection.blocked ||

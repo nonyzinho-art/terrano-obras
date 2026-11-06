@@ -1,24 +1,46 @@
-# Pixel Perfect Replication
+# Terrano Obras
 
-Implement exactly the screenshot and nothing else
+Sistema de gestão de obras de urbanismo e infraestrutura da Terrano: obras, diário de obra,
+orçamentos, medições, cotações com fornecedores e registro de fotos pelo Telegram.
 
-This project was built with [Lovable](https://lovable.dev).
+## Tecnologia
 
-## Build with Lovable
+- **Aplicação:** React 19 + TanStack Start, Tailwind e componentes shadcn/ui
+- **Banco, login e arquivos:** Supabase (projeto `slwxkviezhqpnbmmyezp`)
+- **Publicação:** Vercel
+- **Bot do Telegram:** @Kanteiro_bot, como Edge Function do Supabase
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/929d9a24-a3f8-4205-9f21-146c43ee12f2).
+## Rodar localmente
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requer Node.js 22 ou mais recente.
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+npm ci
+cp .env.example .env.local   # preencha a chave pública do Supabase
 npm run dev
 ```
+
+## Verificações
+
+```sh
+npm test          # testes automatizados
+npx tsc --noEmit  # checagem de tipos
+npm run lint      # padrão de código
+```
+
+## Estrutura
+
+| Pasta                 | Conteúdo                                                        |
+| --------------------- | --------------------------------------------------------------- |
+| `src/routes/`         | Páginas (uma por arquivo)                                       |
+| `src/components/app/` | Componentes do sistema                                          |
+| `src/components/ui/`  | Componentes visuais base (shadcn/ui)                            |
+| `src/lib/`            | Regras de negócio, cálculos e acesso aos dados                  |
+| `src/test/`           | Testes de integração e dados fictícios usados só nos testes     |
+| `supabase/`           | Migrações do banco e Edge Functions (veja `supabase/README.md`) |
+
+## Regras de trabalho
+
+- Toda mudança no banco entra como nova migração em `supabase/migrations/`.
+- Rode os testes antes de cada commit.
+- Não envie arquivos pelo site do GitHub; use commits a partir do projeto local.

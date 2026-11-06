@@ -1,5 +1,14 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, HardHat, CalendarDays, FileSpreadsheet, Menu, X } from "lucide-react";
+import {
+  LayoutDashboard,
+  HardHat,
+  CalendarDays,
+  FileSpreadsheet,
+  Handshake,
+  Ruler,
+  Menu,
+  X,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -7,9 +16,9 @@ const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/obras", label: "Obras", icon: HardHat },
   { to: "/diario", label: "Diário de Obras", icon: CalendarDays },
-  { to: "/cotacoes", label: "Cotações", icon: FileSpreadsheet },
+  { to: "/cotacoes", label: "Cotações", icon: Handshake },
   { to: "/orcamentos", label: "Orçamentos", icon: FileSpreadsheet },
-  { to: "/medicoes", label: "Medições", icon: FileSpreadsheet },
+  { to: "/medicoes", label: "Medições", icon: Ruler },
 ] as const;
 
 function Brand() {

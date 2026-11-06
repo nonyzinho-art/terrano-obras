@@ -32,7 +32,6 @@ vi.mock("@/lib/repository", () => ({
     },
   ],
   getApprovedBudgetQuantities: () => new Map([["old-item", 4]]),
-  isCloudMode: () => true,
   replaceData: vi.fn(),
   getImportRevisionProtection: () => ({
     blocked: mocks.blocked,

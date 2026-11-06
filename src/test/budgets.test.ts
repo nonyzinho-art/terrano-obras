@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { fixtureSnapshot } from "@/test/fixtures";
 import {
+  replaceData,
   getWorks,
   getBudgetItems,
   getBudgetsByWork,
@@ -8,6 +10,9 @@ import {
   getBudgetSummary,
 } from "@/lib/repository";
 import { filterBudgetItems } from "@/lib/budget-filter";
+
+beforeAll(() => replaceData(fixtureSnapshot()));
+afterAll(() => replaceData(null));
 
 describe("Budget hierarchy", () => {
   it("assigns every existing item to exactly one budget belonging to its work, preserving totals", () => {

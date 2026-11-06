@@ -25,7 +25,6 @@ vi.mock("@/lib/repository", () => ({
   getReportItems: () => [],
   getBudget: () => ({ id: "b", name: "Drenagem", work_id: "w" }),
   getItemsByBudget: () => [{ id: "i", code: "1.1", description: "Tubo", unit: "m" }],
-  isCloudMode: () => true,
   TODAY: "2026-10-26",
   createDailyReport: mocks.save,
 }));
