@@ -103,19 +103,25 @@ function BudgetDetail() {
       <PageHeader
         eyebrow={work.name}
         title={budget.name}
-        description="Orçamento para acompanhamento, organizado pelos grupos da planilha."
         actions={<BudgetStatusBadge status={budget.status} />}
       />
       <Panel className="mb-5">
-        <dl className="grid grid-cols-2 gap-5 lg:grid-cols-5">
-          <Summary label="Obra" value={work.name} />
-          <Summary label="Frente" value={budget.name} />
+        <dl className="grid grid-cols-2 gap-5 lg:grid-cols-4">
           <Summary
             label={summary.pendingCount ? "Valor parcial" : "Valor total"}
             value={fmtBRL(summary.total)}
+            strong
           />
-          <Summary label="Quantidade de itens" value={String(summary.itemCount)} />
-          <Summary label="Última atualização" value={fmtDate(budget.updated_at)} />
+          <Summary
+            label="Itens"
+            value={
+              summary.pendingCount
+                ? `${summary.itemCount} · ${summary.pendingCount} pendentes`
+                : String(summary.itemCount)
+            }
+          />
+          <Summary label="Revisão" value={String(budget.revision ?? 1)} />
+          <Summary label="Atualizado em" value={fmtDate(budget.updated_at)} />
         </dl>
       </Panel>
       <Tabs
@@ -446,11 +452,17 @@ function BudgetDetail() {
     </>
   );
 }
-function Summary({ label, value }: { label: string; value: string }) {
+function Summary({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div>
-      <dt className="eyebrow mb-1">{label}</dt>
-      <dd className="num text-sm font-semibold">{value}</dd>
+    <div className="min-w-0">
+      <dt className="mb-1 text-xs text-muted-foreground">{label}</dt>
+      <dd
+        className={
+          strong ? "num text-xl font-bold text-brand" : "num truncate text-sm font-semibold"
+        }
+      >
+        {value}
+      </dd>
     </div>
   );
 }

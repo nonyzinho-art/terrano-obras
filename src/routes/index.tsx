@@ -4,7 +4,14 @@ import { ChevronRight, Plus } from "lucide-react";
 import { AppShellHeader } from "@/components/app/headers";
 import { BudgetAlerts } from "@/components/app/BudgetAlerts";
 import { NewReportDialog } from "@/components/app/NewReportDialog";
-import { ActivityList, Panel, ProgressBar, StatusBadge } from "@/components/app/bits";
+import {
+  ActivityList,
+  compactBRL,
+  Panel,
+  ProgressBar,
+  Stat,
+  WorkSituation as Situation,
+} from "@/components/app/bits";
 import { Button } from "@/components/ui/button";
 import {
   getActivities,
@@ -20,8 +27,6 @@ import {
 } from "@/lib/repository";
 import { useAccess } from "@/lib/access";
 import { fmtDate, fmtDateShort, fmtPct } from "@/lib/format";
-import type { Work } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -40,64 +45,6 @@ export const Route = createFileRoute("/")({
   }),
   component: Dashboard,
 });
-
-const compactBRL = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-function Stat({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  tone?: "warning";
-}) {
-  return (
-    <div
-      className={cn(
-        "panel p-4 sm:p-5",
-        tone === "warning" && "border-l-4 border-l-warning rounded-l-none",
-      )}
-    >
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div
-        className={cn(
-          "num mt-1 text-2xl font-bold tracking-tight sm:text-[1.7rem]",
-          tone === "warning" ? "text-warning-foreground" : "text-brand",
-        )}
-      >
-        {value}
-      </div>
-      <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>
-    </div>
-  );
-}
-
-/** One short label instead of the long technical coverage text. */
-function Situation({ work }: { work: Work }) {
-  const progress = getMeasurementProgress(work.id);
-  const display = getWorkProgressDisplay(work);
-  const chip = "inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap";
-  if (!progress.summaries.length)
-    return <span className={cn(chip, "bg-muted text-muted-foreground")}>Sem orçamento</span>;
-  if (progress.unreconciled || !display.comparable)
-    return (
-      <span
-        title={display.coverage}
-        className={cn(chip, "bg-warning-soft text-warning-foreground")}
-      >
-        {progress.unreconciled ? "Revisão a conferir" : "Base incompleta"}
-      </span>
-    );
-  return <StatusBadge status={work.status} />;
-}
 
 function Dashboard() {
   useDataVersion();

@@ -1,7 +1,69 @@
 import { Camera, ClipboardList, Wrench, CircleCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { STATUS_LABEL } from "@/lib/repository";
-import type { Activity, WorkStatus } from "@/lib/types";
+import { getMeasurementProgress, getWorkProgressDisplay, STATUS_LABEL } from "@/lib/repository";
+import type { Activity, Work, WorkStatus } from "@/lib/types";
+
+export const compactBRL = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+/** Headline number card used on the Painel and on each work page. */
+export function Stat({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: React.ReactNode;
+  tone?: "warning" | "danger" | undefined;
+}) {
+  return (
+    <div
+      className={cn(
+        "panel min-w-0 p-4 sm:p-5",
+        tone === "warning" && "rounded-l-none border-l-4 border-l-warning",
+        tone === "danger" && "rounded-l-none border-l-4 border-l-danger",
+      )}
+    >
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "num mt-1 truncate text-2xl font-bold tracking-tight sm:text-[1.7rem]",
+          tone === "warning" && "text-warning-foreground",
+          tone === "danger" && "text-danger",
+          !tone && "text-brand",
+        )}
+      >
+        {value}
+      </div>
+      {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
+    </div>
+  );
+}
+
+/** One short label instead of the long technical coverage text (shown on hover). */
+export function WorkSituation({ work }: { work: Work }) {
+  const progress = getMeasurementProgress(work.id);
+  const display = getWorkProgressDisplay(work);
+  const chip = "inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap";
+  if (!progress.summaries.length)
+    return <span className={cn(chip, "bg-muted text-muted-foreground")}>Sem orçamento</span>;
+  if (progress.unreconciled || !display.comparable)
+    return (
+      <span
+        title={display.coverage}
+        className={cn(chip, "bg-warning-soft text-warning-foreground")}
+      >
+        {progress.unreconciled ? "Revisão a conferir" : "Base incompleta"}
+      </span>
+    );
+  return <StatusBadge status={work.status} />;
+}
 
 const STATUS_STYLE: Record<WorkStatus, { badge: string; dot: string; bar: string }> = {
   em_andamento: { badge: "bg-success-soft text-primary", dot: "bg-success", bar: "bg-primary" },

@@ -3,15 +3,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { CalendarDays, HardHat, List, Plus } from "lucide-react";
 import { PageHeader } from "@/components/app/AppShell";
+import { Panel } from "@/components/app/bits";
 import { ReportCalendar } from "@/components/app/ReportCalendar";
 import { ReportDetailDialog } from "@/components/app/ReportDetailDialog";
 import { NewReportDialog } from "@/components/app/NewReportDialog";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,11 +20,12 @@ import { getWorks, getReportsByWork, useDataVersion, TODAY } from "@/lib/reposit
 import { fmtDate } from "@/lib/format";
 import { normalizeSearch } from "@/lib/search";
 import type { DailyReport } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/diario")({
   head: () => ({
     meta: [
-      { title: "Diário de Obras — Terrano Obras" },
+      { title: "Diário de obras — Terrano Obras" },
       { name: "description", content: "Calendário de diários por obra." },
     ],
   }),
@@ -47,50 +43,88 @@ function Diario() {
     else if (reports.length === 1) setSelected(reports[0]!);
     else setDay({ workId, date });
   };
+  const works = getWorks()
+    .map((work) => {
+      const reports = getReportsByWork(work.id);
+      return {
+        work,
+        reports,
+        lastDate:
+          reports
+            .map((r) => r.date)
+            .sort()
+            .at(-1) ?? "",
+      };
+    })
+    .sort((a, b) => b.lastDate.localeCompare(a.lastDate) || a.work.name.localeCompare(b.work.name));
+  const [chosen, setChosen] = useState("");
+  const current = works.find((w) => w.work.id === chosen) ?? works[0];
   return (
     <>
       <PageHeader
         eyebrow="Registros de campo"
-        title="Diário de Obras"
-        description="Selecione uma obra e consulte os diários no calendário ou na lista."
+        title="Diário de obras"
+        actions={
+          current &&
+          canWriteWork(current.work.id) && (
+            <Button onClick={() => setCreation({ workId: current.work.id, date: TODAY })}>
+              <Plus className="size-4" />
+              Novo diário
+            </Button>
+          )
+        }
       />
-      <Accordion type="multiple" className="space-y-4">
-        {getWorks().map((work) => {
-          const reports = getReportsByWork(work.id);
-          const lastDate = reports
-            .map((r) => r.date)
-            .sort()
-            .at(-1);
-          return (
-            <AccordionItem key={work.id} value={work.id} className="panel overflow-hidden border">
-              <AccordionTrigger className="px-5 py-5 hover:bg-muted/30 hover:no-underline focus-visible:outline-2 focus-visible:outline-primary">
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-md bg-success-soft text-primary">
-                    <HardHat className="size-5" />
-                  </span>
-                  <span>
-                    <span className="block text-base font-semibold">{work.name}</span>
-                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                      {reports.length} {reports.length === 1 ? "registro" : "registros"} ·{" "}
-                      {lastDate ? `Último diário: ${fmtDate(lastDate)}` : "Sem diários registrados"}
+      {current ? (
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <select
+            aria-label="Obra do diário"
+            className="h-10 rounded-md border bg-card px-3 text-sm lg:hidden"
+            value={current.work.id}
+            onChange={(e) => setChosen(e.target.value)}
+          >
+            {works.map(({ work, reports }) => (
+              <option key={work.id} value={work.id}>
+                {work.name} ({reports.length})
+              </option>
+            ))}
+          </select>
+          <nav aria-label="Obras" className="panel hidden self-start overflow-hidden lg:block">
+            <ul className="divide-y">
+              {works.map(({ work, reports, lastDate }) => (
+                <li key={work.id}>
+                  <button
+                    onClick={() => setChosen(work.id)}
+                    aria-current={work.id === current.work.id}
+                    className={cn(
+                      "flex w-full items-center gap-3 border-l-4 px-4 py-3 text-left hover:bg-muted/50",
+                      work.id === current.work.id
+                        ? "border-l-brand bg-muted/60"
+                        : "border-l-transparent",
+                    )}
+                  >
+                    <HardHat className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{work.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {lastDate ? `Último: ${fmtDate(lastDate)}` : "Sem diários"}
+                      </span>
                     </span>
-                  </span>
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="border-t px-3 pt-4 pb-5 sm:px-5">
-                <WorkDiary
-                  canCreate={canWriteWork(work.id)}
-                  reports={reports}
-                  onSelect={setSelected}
-                  onDateSelect={(date, list) => openDay(work.id, date, list)}
-                  onCreate={() => setCreation({ workId: work.id, date: TODAY })}
-                />
-              </AccordionContent>
-            </AccordionItem>
-          );
-        })}
-      </Accordion>
-      {!getWorks().length && (
+                    <span className="num text-xs text-muted-foreground">{reports.length}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <Panel title={current.work.name}>
+            <WorkDiary
+              key={current.work.id}
+              reports={current.reports}
+              onSelect={setSelected}
+              onDateSelect={(date, list) => openDay(current.work.id, date, list)}
+            />
+          </Panel>
+        </div>
+      ) : (
         <p className="panel p-8 text-center text-sm text-muted-foreground">
           Nenhuma obra cadastrada.
         </p>
@@ -141,7 +175,7 @@ function Diario() {
             }}
           >
             <Plus className="size-4" />
-            Novo Diário neste dia
+            Novo diário neste dia
           </Button>
         </DialogContent>
       </Dialog>
@@ -156,9 +190,6 @@ function Diario() {
           defaultDate={creation.date}
         />
       )}
-      <p className="mt-4 text-xs text-muted-foreground">
-        Selecione a obra e o dia para consultar seus registros.
-      </p>
     </>
   );
 }
@@ -167,14 +198,10 @@ function WorkDiary({
   reports,
   onSelect,
   onDateSelect,
-  onCreate,
-  canCreate,
 }: {
   reports: DailyReport[];
   onSelect: (report: DailyReport) => void;
   onDateSelect: (date: string, reports: DailyReport[]) => void;
-  onCreate: () => void;
-  canCreate: boolean;
 }) {
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [query, setQuery] = useState("");
@@ -216,10 +243,9 @@ function WorkDiary({
             Lista
           </Button>
         </div>
-        <Button size="sm" disabled={!canCreate} onClick={onCreate}>
-          <Plus className="size-4" />
-          Novo Diário
-        </Button>
+        <span className="text-xs text-muted-foreground">
+          {reports.length} {reports.length === 1 ? "registro" : "registros"}
+        </span>
       </div>
       {view === "calendar" ? (
         <ReportCalendar reports={reports} onSelect={onSelect} onDateSelect={onDateSelect} />
