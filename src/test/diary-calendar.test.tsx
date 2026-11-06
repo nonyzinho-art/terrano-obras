@@ -42,7 +42,7 @@ describe("Diário calendar", () => {
   it("provides the clicked date for an empty day and navigates across years", () => {
     const onDateSelect = vi.fn();
     render(<ReportCalendar reports={[]} onSelect={vi.fn()} onDateSelect={onDateSelect} />);
-    fireEvent.click(screen.getByRole("button", { name: "06/10/2026 — Novo Diário" }));
+    fireEvent.click(screen.getByRole("button", { name: "06/10/2026 — Novo diário" }));
     expect(onDateSelect).toHaveBeenCalledWith("2026-10-06", []);
     for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole("button", { name: "Próximo" }));
     expect(screen.getByText("Janeiro 2027")).toBeInTheDocument();

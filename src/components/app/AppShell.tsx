@@ -48,30 +48,25 @@ export type ShellAccount = {
   onSignOut: () => void;
 };
 
+/** White Terrano wordmark; place it on a dark (brand) background. */
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <div
-      aria-hidden
-      className={cn(
-        "grid size-8 shrink-0 place-items-center rounded-md bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground",
-        className,
-      )}
-    >
-      T
-    </div>
+    <img
+      src="/logo-terrano.png"
+      alt="Terrano"
+      width={1200}
+      height={172}
+      className={cn("h-5 w-auto select-none", className)}
+      draggable={false}
+    />
   );
 }
 
 function Brand() {
   return (
-    <div className="flex h-16 items-center gap-2.5 px-5">
+    <div className="flex flex-col justify-center gap-1.5 px-6 pt-6 pb-5">
       <BrandMark />
-      <div className="leading-tight">
-        <div className="text-sm font-bold tracking-[0.12em] text-sidebar-accent-foreground">
-          TERRANO
-        </div>
-        <div className="text-[11px] text-sidebar-foreground/80">Gestão de obras</div>
-      </div>
+      <div className="text-[11px] tracking-wide text-sidebar-foreground/80">Gestão de obras</div>
     </div>
   );
 }
@@ -124,7 +119,7 @@ function AccountMenu({ account, compact }: { account: ShellAccount; compact?: bo
         <span
           className={cn(
             "grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold",
-            compact ? "bg-brand text-white" : "bg-sidebar-accent text-sidebar-accent-foreground",
+            "bg-sidebar-accent text-sidebar-accent-foreground",
           )}
         >
           {initials(account.name)}
@@ -204,11 +199,11 @@ export function AppShell({ children, account }: { children: ReactNode; account?:
         </div>
       )}
       <div className="lg:pl-60">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 bg-sidebar px-4 text-sidebar-accent-foreground lg:hidden">
           <button onClick={() => setOpen(true)} aria-label="Abrir menu">
             <Menu className="size-5" />
           </button>
-          <span className="text-sm font-bold tracking-[0.12em] text-brand">TERRANO</span>
+          <BrandMark className="h-4" />
           {account && (
             <div className="ml-auto">
               <AccountMenu account={account} compact />

@@ -23,10 +23,7 @@ function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-screen bg-background md:grid-cols-[2fr_3fr]">
       <aside className="flex flex-col justify-center gap-3 bg-sidebar px-8 py-10 md:px-14">
-        <div className="flex items-center gap-3">
-          <BrandMark className="size-11 text-lg" />
-          <span className="text-2xl font-bold tracking-[0.14em] text-white">TERRANO</span>
-        </div>
+        <BrandMark className="h-9 self-start md:h-11" />
         <p className="text-base text-white md:text-lg">Gestão de obras</p>
         <p className="text-xs text-sidebar-foreground/80">Urbanismo e infraestrutura</p>
       </aside>

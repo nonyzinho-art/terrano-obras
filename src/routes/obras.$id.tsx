@@ -480,7 +480,7 @@ function WorkDiary({ workId, onNew }: { workId: string; onNew: () => void }) {
           />
           <Button size="sm" disabled={!canWriteWork(workId)} onClick={onNew}>
             <Plus className="size-3.5" />
-            Novo Registro
+            Novo diário
           </Button>
         </div>
       }

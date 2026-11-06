@@ -124,7 +124,7 @@ export function ReportCalendar({
                 <button
                   type="button"
                   onClick={() => onDateSelect(iso, list)}
-                  aria-label={`${d.toLocaleDateString("pt-BR")} — ${list.length ? `${list.length} registro(s)` : "Novo Diário"}`}
+                  aria-label={`${d.toLocaleDateString("pt-BR")} — ${list.length ? `${list.length} registro(s)` : "Novo diário"}`}
                   aria-current={iso === TODAY ? "date" : undefined}
                   className="flex min-h-[78px] w-full flex-col items-center gap-1 rounded-sm px-0.5 py-1 text-center hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-primary sm:items-start sm:px-1"
                 >
@@ -160,7 +160,7 @@ export function ReportCalendar({
                   ) : (
                     <span className="text-[10px] text-muted-foreground">
                       <span className="sm:hidden">+</span>
-                      <span className="hidden sm:inline">+ Novo Diário</span>
+                      <span className="hidden sm:inline">+ Novo diário</span>
                     </span>
                   )}
                 </button>

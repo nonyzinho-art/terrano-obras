@@ -1,19 +1,16 @@
 import { canWriteWork } from "@/lib/access";
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronRight, HardHat } from "lucide-react";
+import { ChevronRight, Search, Upload } from "lucide-react";
 import { PageHeader } from "@/components/app/AppShell";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { Panel } from "@/components/app/bits";
 import { BudgetStatusBadge } from "@/components/app/BudgetStatusBadge";
 import { getWorks, getBudgetsByWork, getBudgetSummary, useDataVersion } from "@/lib/repository";
 import { BudgetImportDialog } from "@/components/app/BudgetImportDialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { fmtBRL, fmtDate } from "@/lib/format";
+import { normalizeSearch } from "@/lib/search";
 
 export const Route = createFileRoute("/orcamentos/")({
   validateSearch: (s: Record<string, unknown>): { obra?: string | undefined } => ({
@@ -28,101 +25,134 @@ export const Route = createFileRoute("/orcamentos/")({
   component: Orcamentos,
 });
 
+const GRID = "md:grid-cols-[minmax(0,1.8fr)_5rem_minmax(0,1.1fr)_7rem_6rem_1rem]";
+
 function Orcamentos() {
   useDataVersion();
   const { obra } = Route.useSearch();
   const works = getWorks();
   const [importing, setImporting] = useState(false);
-  const [expanded, setExpanded] = useState<string[]>(
-    obra && works.some((w) => w.id === obra) ? [obra] : [],
-  );
+  const [workId, setWorkId] = useState(obra && works.some((w) => w.id === obra) ? obra : "");
+  const [query, setQuery] = useState("");
+  const term = normalizeSearch(query);
+  const rows = works
+    .filter((w) => !workId || w.id === workId)
+    .flatMap((work) =>
+      getBudgetsByWork(work.id).map((budget) => ({
+        work,
+        budget,
+        summary: getBudgetSummary(budget.id),
+      })),
+    )
+    .filter(({ work, budget }) => normalizeSearch(`${work.name} ${budget.name}`).includes(term))
+    .sort(
+      (a, b) =>
+        a.work.name.localeCompare(b.work.name) ||
+        a.budget.name.localeCompare(b.budget.name) ||
+        (b.budget.revision ?? 1) - (a.budget.revision ?? 1),
+    );
+  const total = rows.reduce((sum, r) => sum + r.summary.total, 0);
   return (
     <>
       <PageHeader
         eyebrow="Gestão de custos"
         title="Orçamentos"
-        description="Selecione uma obra e abra o orçamento da frente desejada."
+        actions={
+          works.some((w) => canWriteWork(w.id)) && (
+            <Button onClick={() => setImporting(true)}>
+              <Upload className="size-4" />
+              Importar orçamento
+            </Button>
+          )
+        }
       />
-      <div className="mb-5">
-        <Button
-          disabled={!works.some((w) => canWriteWork(w.id))}
-          onClick={() => setImporting(true)}
-        >
-          Importar orçamento
-        </Button>
-      </div>
       {importing && <BudgetImportDialog open onOpenChange={setImporting} />}
-      <Accordion type="multiple" value={expanded} onValueChange={setExpanded} className="space-y-4">
-        {works.map((work) => {
-          const budgets = getBudgetsByWork(work.id);
-          return (
-            <AccordionItem key={work.id} value={work.id} className="panel overflow-hidden border">
-              <AccordionTrigger className="px-5 py-5 hover:no-underline hover:bg-muted/30 focus-visible:outline-2 focus-visible:outline-primary">
-                <span className="flex items-center gap-3">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-md bg-success-soft text-primary">
-                    <HardHat className="size-5" />
-                  </span>
-                  <span>
-                    <span className="block text-base font-semibold">{work.name}</span>
-                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                      {work.location} · {budgets.length} frentes
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+        <select
+          aria-label="Obra dos orçamentos"
+          className="h-10 rounded-md border bg-card px-3 text-sm"
+          value={workId}
+          onChange={(e) => setWorkId(e.target.value)}
+        >
+          <option value="">Todas as obras</option>
+          {works.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+        <div className="relative w-full max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="bg-card pl-9"
+            aria-label="Buscar orçamento"
+            placeholder="Buscar obra ou orçamento"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+      </div>
+      <Panel
+        title={`${rows.length} ${rows.length === 1 ? "orçamento" : "orçamentos"} · ${fmtBRL(total)}`}
+        className="[&>div:last-child]:p-0"
+      >
+        <div
+          className={`hidden gap-4 border-b px-5 py-2.5 text-xs text-muted-foreground md:grid ${GRID}`}
+        >
+          <span>Orçamento</span>
+          <span>Itens</span>
+          <span>Valor</span>
+          <span>Situação</span>
+          <span>Atualizado</span>
+          <span />
+        </div>
+        {!rows.length && (
+          <p className="px-5 py-4 text-sm text-muted-foreground">
+            {works.length ? "Nenhum orçamento para esta seleção." : "Nenhuma obra cadastrada."}
+          </p>
+        )}
+        <ul className="divide-y">
+          {rows.map(({ work, budget, summary }) => (
+            <li key={budget.id}>
+              <Link
+                to="/orcamentos/$obraId/$orcamentoId"
+                params={{ obraId: work.id, orcamentoId: budget.id }}
+                className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-5 py-3.5 hover:bg-muted/50 ${GRID}`}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-xs text-muted-foreground">{work.name}</div>
+                  <div className="truncate font-medium">
+                    {budget.name}
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      rev. {budget.revision ?? 1}
                     </span>
-                  </span>
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="border-t px-4 pt-3 pb-4 sm:px-5">
-                <div className="space-y-2">
-                  {budgets.map((budget) => {
-                    const summary = getBudgetSummary(budget.id);
-                    return (
-                      <Link
-                        key={budget.id}
-                        to="/orcamentos/$obraId/$orcamentoId"
-                        params={{ obraId: work.id, orcamentoId: budget.id }}
-                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-success-soft/40 focus-visible:outline-2 focus-visible:outline-primary xl:grid-cols-[minmax(140px,1fr)_80px_140px_120px_120px_16px]"
-                      >
-                        <span className="font-semibold text-primary">
-                          {budget.name}
-                          {budget.revision ? ` · Revisão ${budget.revision}` : ""}
-                        </span>
-                        <span className="text-xs text-muted-foreground sm:text-sm">
-                          {summary.itemCount} {summary.itemCount === 1 ? "item" : "itens"}
-                        </span>
-                        <span className="num text-sm font-semibold">
-                          {fmtBRL(summary.total)}
-                          {summary.pendingCount > 0 && (
-                            <span className="block text-xs font-normal text-amber-700">
-                              Valor parcial · {summary.pendingCount} pendentes
-                            </span>
-                          )}
-                        </span>
-                        <span>
-                          <BudgetStatusBadge status={budget.status} />
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          <span className="block text-[10px] uppercase">Atualizado em</span>
-                          {fmtDate(budget.updated_at)}
-                        </span>
-                        <ChevronRight className="size-4 justify-self-end text-muted-foreground" />
-                      </Link>
-                    );
-                  })}
+                  </div>
                 </div>
-                {!budgets.length && (
-                  <p className="py-5 text-sm text-muted-foreground">
-                    Nenhum orçamento cadastrado para esta obra.
-                  </p>
-                )}
-              </AccordionContent>
-            </AccordionItem>
-          );
-        })}
-      </Accordion>
-      {!works.length && (
-        <p className="panel p-8 text-center text-muted-foreground">Nenhuma obra cadastrada.</p>
-      )}
+                <span className="num text-sm text-muted-foreground max-md:hidden">
+                  {summary.itemCount}
+                </span>
+                <div className="num min-w-0 max-md:col-start-1">
+                  <span className="font-semibold text-brand">{fmtBRL(summary.total)}</span>
+                  {summary.pendingCount > 0 && (
+                    <span className="block text-xs text-warning-foreground">
+                      parcial · {summary.pendingCount} pendentes
+                    </span>
+                  )}
+                </div>
+                <span className="max-md:col-start-2 max-md:row-start-1">
+                  <BudgetStatusBadge status={budget.status} />
+                </span>
+                <span className="num text-xs text-muted-foreground max-md:hidden">
+                  {fmtDate(budget.updated_at)}
+                </span>
+                <ChevronRight className="hidden size-4 text-muted-foreground group-hover:text-primary md:block" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Panel>
       <p className="mt-4 text-xs text-muted-foreground">
-        Orçamentos importados da sua conta. Revisões anteriores são preservadas.
+        Cada importação cria uma nova revisão e preserva as anteriores.
       </p>
     </>
   );
