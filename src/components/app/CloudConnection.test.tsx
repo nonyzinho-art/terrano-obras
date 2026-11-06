@@ -42,9 +42,18 @@ vi.mock("@/lib/access", () => ({
   ROLE_LABELS: { engenheiro: "Engenheiro" },
 }));
 vi.mock("@/components/app/AppShell", () => ({
-  AppShell: ({ children }: { children: React.ReactNode }) => (
+  BrandMark: () => null,
+  AppShell: ({
+    children,
+    account,
+  }: {
+    children: React.ReactNode;
+    account?: { onProfile: () => void; syncMessage?: string };
+  }) => (
     <div>
       <nav>Menu protegido</nav>
+      {account && <button onClick={account.onProfile}>Meu perfil</button>}
+      {account?.syncMessage && <p role="status">{account.syncMessage}</p>}
       {children}
     </div>
   ),

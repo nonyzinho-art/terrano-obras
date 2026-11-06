@@ -7,9 +7,35 @@ import { backgroundPaused, startBackgroundRefresh } from "@/lib/background-refre
 import { clearPhotoUrls } from "@/lib/photo-urls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AppShell } from "@/components/app/AppShell";
+import { AppShell, BrandMark } from "@/components/app/AppShell";
 import { AccessAdminDialog } from "@/components/app/AccessAdminDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { setAccess, ROLE_LABELS, type AppProfile } from "@/lib/access";
+
+/** Split screen used by the sign-in, loading and blocked-account states. */
+function AuthLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid min-h-screen bg-background md:grid-cols-[2fr_3fr]">
+      <aside className="flex flex-col justify-center gap-3 bg-sidebar px-8 py-10 md:px-14">
+        <div className="flex items-center gap-3">
+          <BrandMark className="size-11 text-lg" />
+          <span className="text-2xl font-bold tracking-[0.14em] text-white">TERRANO</span>
+        </div>
+        <p className="text-base text-white md:text-lg">Gestão de obras</p>
+        <p className="text-xs text-sidebar-foreground/80">Urbanismo e infraestrutura</p>
+      </aside>
+      <main className="flex items-center justify-center p-6 md:p-12">
+        <div className="w-full max-w-sm">{children}</div>
+      </main>
+    </div>
+  );
+}
 
 async function loadAccount(id: string) {
   const { data, error } = await getSupabase()
@@ -276,25 +302,30 @@ export function CloudConnection({ children }: { children: ReactNode }) {
   };
   if (!checked)
     return (
-      <div className="grid min-h-screen place-items-center bg-background">
-        Verificando seu acesso…
-      </div>
+      <AuthLayout>
+        <p className="text-sm text-muted-foreground">Verificando seu acesso…</p>
+      </AuthLayout>
     );
   if (!user)
     return (
-      <div className="grid min-h-screen place-items-center bg-background p-5">
+      <AuthLayout>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void authenticate(signupMode);
           }}
-          className="w-full max-w-md rounded-xl border bg-card space-y-4 p-7 shadow-sm"
+          className="space-y-4"
         >
-          <h2 className="font-semibold">Terrano Obras — Acesso</h2>
-          <p className="text-sm text-muted-foreground">
-            Entre com seu e-mail e senha. Novos cadastros começam sem obras liberadas; o
-            administrador libera o acesso a cada obra.
-          </p>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-brand">
+              {signupMode ? "Criar sua conta" : "Acessar o sistema"}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {signupMode
+                ? "Novos cadastros começam sem obras liberadas; o administrador libera cada obra."
+                : "Use seu e-mail e senha cadastrados."}
+            </p>
+          </div>
           {signupMode && (
             <label className="block text-sm">
               Nome completo
@@ -332,37 +363,47 @@ export function CloudConnection({ children }: { children: ReactNode }) {
               {message}
             </p>
           )}
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={busy || !password} type="submit">
-              {signupMode ? "Criar conta" : "Entrar"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={() => {
-                setSignupMode(!signupMode);
-                setMessage("");
-              }}
-            >
-              {signupMode ? "Já tenho conta" : "Criar minha conta"}
-            </Button>
+          <Button className="w-full" disabled={busy || !password} type="submit">
+            {signupMode ? "Criar conta" : "Entrar"}
+          </Button>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            ou
+            <span className="h-px flex-1 bg-border" />
           </div>
+          <Button
+            className="w-full"
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              setSignupMode(!signupMode);
+              setMessage("");
+            }}
+          >
+            {signupMode ? "Já tenho conta" : "Criar minha conta"}
+          </Button>
         </form>
-      </div>
+      </AuthLayout>
     );
   if (!ready || !profile?.active)
     return (
-      <div className="grid min-h-screen place-items-center bg-background p-5">
-        <section className="panel w-full max-w-md space-y-4 p-6">
-          <h1 className="font-semibold">Terrano Obras</h1>
-          <p>
+      <AuthLayout>
+        <section className="space-y-4">
+          <h1 className="text-2xl font-bold tracking-tight text-brand">
+            {!ready ? "Carregando…" : "Acesso desativado"}
+          </h1>
+          <p className="text-sm">
             {!ready
               ? "Carregando seu acesso…"
               : "Seu acesso está desativado. Fale com o administrador do sistema."}
           </p>
           <p className="text-sm text-muted-foreground">{user.email}</p>
-          {message && <p role="alert">{message}</p>}
+          {message && (
+            <p role="alert" className="rounded-md border bg-warning-soft p-3 text-sm">
+              {message}
+            </p>
+          )}
           <div className="flex gap-2">
             <Button disabled={busy} onClick={() => void refresh()}>
               Atualizar acesso
@@ -376,118 +417,103 @@ export function CloudConnection({ children }: { children: ReactNode }) {
             </Button>
           </div>
         </section>
-      </div>
+      </AuthLayout>
     );
+  const signOut = async () => {
+    const { error } = await getSupabase().auth.signOut();
+    if (error) setMessage(error.message);
+    else {
+      setTelegramUrl("");
+      setProfile(null);
+      setAccess(null);
+      replaceData(null);
+      setAdminOpen(false);
+      setProfileOpen(false);
+    }
+  };
+  const isAdmin = profile.role === "administrador";
   return (
-    <AppShell>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card p-3 text-sm">
-        <span>
-          {user.user_metadata?.["full_name"] || user.email} · {ROLE_LABELS[profile.role]}
-        </span>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setProfileName(user.user_metadata?.["full_name"] || "");
-              setProfileOpen(!profileOpen);
+    <AppShell
+      account={{
+        name: user.user_metadata?.["full_name"] || user.email || "Minha conta",
+        email: user.email ?? "",
+        roleLabel: ROLE_LABELS[profile.role],
+        isAdmin,
+        busy,
+        syncMessage,
+        onProfile: () => {
+          setProfileName(user.user_metadata?.["full_name"] || "");
+          setProfileOpen(true);
+        },
+        onAdmin: () => setAdminOpen(true),
+        onRefresh: () => void refresh(),
+        onSignOut: () => void signOut(),
+      }}
+    >
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Meu perfil</DialogTitle>
+            <DialogDescription>{user.email}</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveProfile();
             }}
           >
-            Meu perfil
-          </Button>
-          {profile.role === "administrador" && (
-            <Button size="sm" variant="outline" onClick={() => setAdminOpen(true)}>
-              Gerenciar acessos
-            </Button>
-          )}
-          <>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void refresh()}>
-              Atualizar
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                const { error } = await getSupabase().auth.signOut();
-                if (error) setMessage(error.message);
-                else {
-                  setTelegramUrl("");
-                  setProfile(null);
-                  setAccess(null);
-                  replaceData(null);
-                  setAdminOpen(false);
-                }
-              }}
-            >
-              Sair
-            </Button>
-          </>
-        </div>
-      </div>
-      {syncMessage && (
-        <p role="status" className="mb-4 text-xs text-muted-foreground">
-          {syncMessage}
-        </p>
-      )}
-      {profileOpen && (
-        <form
-          className="panel mb-5 space-y-3 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void saveProfile();
-          }}
-        >
-          <h2 className="font-semibold">Meu perfil</h2>
-          <p className="text-sm text-muted-foreground">{user.email}</p>
-          <label className="block text-sm">
-            Nome completo
-            <Input
-              value={profileName}
-              onChange={(e) => setProfileName(e.target.value)}
-              autoComplete="name"
-              required
-              minLength={3}
-              maxLength={120}
-            />
-          </label>
-          <div className="flex gap-2">
+            <label className="block text-sm">
+              Nome completo
+              <Input
+                value={profileName}
+                onChange={(e) => setProfileName(e.target.value)}
+                autoComplete="name"
+                required
+                minLength={3}
+                maxLength={120}
+              />
+            </label>
             <Button type="submit" disabled={busy}>
               Salvar nome
             </Button>
-            <Button type="button" variant="outline" onClick={() => setProfileOpen(false)}>
-              Cancelar
-            </Button>
-          </div>
-        </form>
-      )}
-      {user && ready && (
-        <section className="panel mb-5 flex flex-wrap items-center gap-3 p-3">
-          <span className="text-sm">Telegram · @Kanteiro_bot</span>
-          <Button size="sm" disabled={busy} onClick={() => telegram("link")}>
-            Vincular Telegram
-          </Button>
-          {profile.role === "administrador" && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => telegram("configure")}
-            >
-              Ativar conexão
-            </Button>
-          )}
-          {telegramUrl && (
-            <a
-              className="text-sm text-primary underline"
-              href={telegramUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Abrir vínculo no Telegram (válido por 10 minutos)
-            </a>
-          )}
-        </section>
-      )}
+          </form>
+          <section className="space-y-3 border-t pt-4">
+            <div>
+              <h3 className="text-sm font-semibold">Telegram · @Kanteiro_bot</h3>
+              <p className="text-xs text-muted-foreground">
+                Vincule sua conta para enviar fotos do diário pelo celular.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => telegram("link")}>
+                Vincular Telegram
+              </Button>
+              {isAdmin && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => telegram("configure")}
+                >
+                  Ativar conexão do bot
+                </Button>
+              )}
+            </div>
+            {telegramUrl && (
+              <a
+                className="block text-sm text-primary underline"
+                href={telegramUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Abrir vínculo no Telegram (válido por 10 minutos)
+              </a>
+            )}
+            {message && <p className="rounded-md border bg-warning-soft p-3 text-sm">{message}</p>}
+          </section>
+        </DialogContent>
+      </Dialog>
       {message && (
         <p role="alert" className="mb-4 rounded-md border bg-warning-soft p-3 text-sm">
           {message}
