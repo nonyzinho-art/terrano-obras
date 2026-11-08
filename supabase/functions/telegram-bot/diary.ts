@@ -63,7 +63,7 @@ export const confirmKeyboard = {
 const plain = (text: string) =>
   text
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\p{L}\p{N}\s,;.\n-]/gu, "")
     .trim()
     .toLowerCase();
