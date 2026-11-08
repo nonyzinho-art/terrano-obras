@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
-import {INVALID,QUESTIONS,backKeyboard,confirmKeyboard,isBack,isConfirm,menuAction,menuKeyboard,missing,parseEquipment,parseWeather,parseWorkers,savedText,summaryText,weatherKeyboard,type Field,type Summary} from "./diary.ts";
+import {INVALID,PHOTO_HELP,QUESTIONS,backKeyboard,confirmKeyboard,isBack,isConfirm,menuAction,menuKeyboard,missing,parseEquipment,parseWeather,parseWorkers,savedText,summaryText,weatherKeyboard,type Field,type Summary} from "./diary.ts";
 const url = Deno.env.get("SUPABASE_URL")!;
 const roleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
@@ -188,6 +188,7 @@ Deno.serve(async(req:Request)=>{
     if(field==="finalize") await send(m.chat.id,"✅ Diário de "+today()+" finalizado!\n\n"+summaryText(data,place,today())+"\n\nNo site ele aparece como finalizado. Para um novo registro, envie /diario.");
     else await send(m.chat.id,savedText(field,data)+"\n\nO que mais? Envie fotos ou use os botões.",menuKeyboard);
    };
+   if(action==="photos") {await ask(null,PHOTO_HELP,menuKeyboard);return response({ok:true});}
    if(action==="summary") {await ask(null,summaryText(await summary(),place,today()),menuKeyboard);return response({ok:true});}
    if(action==="finalize") {
     const s=await summary();
@@ -195,7 +196,7 @@ Deno.serve(async(req:Request)=>{
     await ask("finalize",summaryText(s,place,today())+(gaps.length ? "\n\nAtenção: falta "+gaps.join(" e ")+"." : "")+"\n\nDepois de finalizado, o diário fica só para consulta. Confirma?",confirmKeyboard);
     return response({ok:true});
    }
-   if(action) {await ask(action,QUESTIONS[action],action==="weather" ? weatherKeyboard : backKeyboard);return response({ok:true});}
+   if(action) {await ask(action,QUESTIONS[action as keyof typeof QUESTIONS],action==="weather" ? weatherKeyboard : backKeyboard);return response({ok:true});}
    if(isBack(text)) {await ask(null,"Ok. Envie fotos ou use os botões.",menuKeyboard);return response({ok:true});}
    if(session.awaiting==="finalize") {
     if(isConfirm(text)) await save("finalize",null);

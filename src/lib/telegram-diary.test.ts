@@ -31,6 +31,8 @@ const base: Summary = {
 describe("diário pelo Telegram", () => {
   it("reconhece os botões do menu, mesmo digitados sem emoji", () => {
     expect(menuAction(MENU.weather)).toBe("weather");
+    expect(menuAction(MENU.photos)).toBe("photos");
+    expect(menuAction("fotos")).toBe("photos");
     expect(menuAction("efetivo")).toBe("workers");
     expect(menuAction("Equipamentos")).toBe("equipment");
     expect(menuAction(MENU.finalize)).toBe("finalize");

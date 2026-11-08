@@ -23,6 +23,7 @@ export const WEATHER_BUTTONS: [string, Weather][] = [
 ];
 
 export const MENU = {
+  photos: "📷 Fotos",
   weather: "☀️ Clima",
   workers: "👷 Efetivo",
   equipment: "🚜 Equipamentos",
@@ -37,6 +38,7 @@ export const CONFIRM = "✅ Confirmar finalização";
 
 export const menuKeyboard = {
   keyboard: [
+    [{ text: MENU.photos }],
     [{ text: MENU.weather }, { text: MENU.workers }],
     [{ text: MENU.equipment }, { text: MENU.issue }],
     [{ text: MENU.summary }, { text: MENU.finalize }],
@@ -124,6 +126,9 @@ export function parseEquipment(text: string): { items: string[]; quantity: numbe
   }
   return quantity <= 5000 ? { items, quantity } : undefined;
 }
+
+export const PHOTO_HELP =
+  "📷 Para enviar fotos: toque no clipe 📎 ao lado da caixa de mensagem, escolha Galeria (ou Câmera) e selecione uma ou várias fotos de uma vez. Se quiser, escreva uma legenda antes de enviar.\n\nAs fotos entram direto no diário de hoje. Envie como foto, não como arquivo.";
 
 export const QUESTIONS: Record<Exclude<Field, "finalize">, string> = {
   weather: "Como está o tempo hoje na obra?",
