@@ -7,6 +7,8 @@ import { getSupabase } from "@/lib/supabase";
 import { parseBudgetRows, type ImportPreview } from "@/lib/budget-import";
 import { budgetHierarchy } from "@/lib/budget-hierarchy";
 import { quoteError } from "@/lib/quotes";
+import { uploadProjectFiles, type ProjectFile } from "@/lib/project-files";
+import { ProjectFilesPicker } from "./ProjectFilesPicker";
 import {
   Dialog,
   DialogContent,
@@ -39,7 +41,8 @@ export function NewQuoteDialog({ onClose }: { onClose: () => void }) {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [progress, setProgress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const key = useRef(crypto.randomUUID());
@@ -149,42 +152,16 @@ export function NewQuoteDialog({ onClose }: { onClose: () => void }) {
     try {
       const client = getSupabase();
       const docIds = [...selected];
-      for (const file of files) {
-        let docId = uploaded.current.get(file);
-        if (!docId) {
-          if (file.size === 0 || file.size > 25 * 1024 * 1024)
-            throw Error("Cada projeto deve ter conteúdo e até 25 MB.");
-          docId = crypto.randomUUID();
-          const ext = file.name.split(".").pop();
-          const path = `${work}/${profile.user_id}/${docId}.${/^[a-z0-9]{1,10}$/i.test(ext ?? "") ? ext : "bin"}`;
-          const up = await client.storage
-            .from("work-documents")
-            .upload(path, file, { contentType: file.type || "application/octet-stream" });
-          if (up.error) throw up.error;
-          const meta = await client.from("work_documents").insert({
-            id: docId,
-            work_id: work,
-            title: file.name.slice(0, 200),
-            category: "Projeto",
-            filename: file.name,
-            storage_path: path,
-            size_bytes: file.size,
-          });
-          if (meta.error) {
-            const check = await client
-              .from("work_documents")
-              .select("id")
-              .eq("id", docId)
-              .maybeSingle();
-            if (!check.data) {
-              if (!check.error) await client.storage.from("work-documents").remove([path]);
-              throw meta.error;
-            }
-          }
-          uploaded.current.set(file, docId);
-        }
-        docIds.push(docId);
-      }
+      docIds.push(
+        ...(await uploadProjectFiles(
+          work,
+          profile.user_id,
+          files,
+          uploaded.current,
+          (done, total) => setProgress(`Enviando projetos: ${done} de ${total}`),
+        )),
+      );
+      setProgress("");
       const fingerprint = JSON.stringify([
         work,
         front,
@@ -219,6 +196,7 @@ export function NewQuoteDialog({ onClose }: { onClose: () => void }) {
       setError(quoteError(e));
     } finally {
       setBusy(false);
+      setProgress("");
     }
   };
   return (
@@ -448,35 +426,37 @@ export function NewQuoteDialog({ onClose }: { onClose: () => void }) {
               <p className="mb-2 text-xs text-muted-foreground">
                 Somente os documentos selecionados serão disponibilizados aos convidados.
               </p>
-              {docs.map((d) => (
-                <label key={d.id} className="mb-2 flex gap-2 text-sm">
+              {docs.length > 0 && (
+                <label className="mb-2 flex gap-2 text-sm font-medium">
                   <input
                     type="checkbox"
-                    checked={selected.includes(d.id)}
-                    onChange={(e) =>
-                      setSelected((prev) =>
-                        e.target.checked ? [...prev, d.id] : prev.filter((id) => id !== d.id),
-                      )
-                    }
+                    checked={selected.length === docs.length}
+                    onChange={(e) => setSelected(e.target.checked ? docs.map((d) => d.id) : [])}
                   />
-                  {d.title}
+                  Já na obra: selecionar todos ({docs.length})
                 </label>
-              ))}
-              <label className="block text-sm">
-                Adicionar projetos (até 25 MB por arquivo)
-                <Input
-                  type="file"
-                  multiple
-                  onChange={(e) => {
-                    setFiles(Array.from(e.target.files ?? []));
-                  }}
-                />
-              </label>
-              {files.map((f, i) => (
-                <p key={i} className="text-xs text-muted-foreground">
-                  {f.name}
-                </p>
-              ))}
+              )}
+              <div className="max-h-48 overflow-auto pl-1">
+                {docs.map((d) => (
+                  <label key={d.id} className="mb-2 flex gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(d.id)}
+                      onChange={(e) =>
+                        setSelected((prev) =>
+                          e.target.checked ? [...prev, d.id] : prev.filter((id) => id !== d.id),
+                        )
+                      }
+                    />
+                    {d.title}
+                  </label>
+                ))}
+              </div>
+              <p className="mb-2 mt-3 text-sm">
+                Adicionar projetos — escolha a pasta inteira (as subpastas são mantidas) ou arquivos
+                avulsos, até 25 MB cada.
+              </p>
+              <ProjectFilesPicker value={files} onChange={setFiles} disabled={busy} />
               <p className="mt-2 text-xs text-muted-foreground">
                 Os projetos enviados também ficam salvos em Documentos da obra.
               </p>
@@ -540,7 +520,7 @@ export function NewQuoteDialog({ onClose }: { onClose: () => void }) {
               Cancelar
             </Button>
             <Button disabled={busy || !preview || !!preview.errors.length || !front}>
-              {busy ? "Processando…" : "Criar cotação e gerar links"}
+              {busy ? progress || "Processando…" : "Criar cotação e gerar links"}
             </Button>
           </div>
         </form>

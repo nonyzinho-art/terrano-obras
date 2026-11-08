@@ -1,4 +1,6 @@
 import { AddQuoteSupplierDialog } from "@/components/app/AddQuoteSupplierDialog";
+import { QuoteProjectsPanel } from "@/components/app/QuoteProjectsPanel";
+import { Copy, Mail, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -25,6 +27,10 @@ import {
   latestProposals,
   proposalCoverage,
   approvalRoles,
+  inviteMessage,
+  inviteStatus,
+  mailtoUrl,
+  whatsappUrl,
   type Proposal,
 } from "@/lib/quotes";
 import { fmtBRL, fmtNum, fmtDate } from "@/lib/format";
@@ -88,14 +94,27 @@ function QuoteDetail() {
       ? null
       : Math.round(price * items.find((i) => i.id === itemId)!.quantity * 100) / 100;
   };
-  const copy = async (token: string) => {
-    const link = supplierLink(token);
+  const workName = getWork(q.work_id)?.name ?? "Obra";
+  const copyText = async (text: string, done: string) => {
     try {
-      await navigator.clipboard.writeText(link);
-      toast.success("Link copiado.");
+      await navigator.clipboard.writeText(text);
+      toast.success(done);
     } catch {
-      setVisibleLink(link);
+      setVisibleLink(text);
     }
+  };
+  const copy = (token: string) => copyText(supplierLink(token), "Link copiado.");
+  const openInvites = invites.filter((i) => i.active);
+  const copyAll = () =>
+    copyText(
+      openInvites.map((i) => `${i.supplier_name}: ${supplierLink(i.token)}`).join("\n"),
+      `${openInvites.length} link(s) copiados.`,
+    );
+  const toneClass = {
+    muted: "text-muted-foreground",
+    info: "text-primary",
+    success: "text-success font-medium",
+    danger: "text-danger",
   };
   return (
     <>
@@ -130,16 +149,24 @@ function QuoteDetail() {
         <Panel
           title="Fornecedores e convites"
           action={
-            writable && q.status === "aberta" ? (
-              <Button size="sm" onClick={() => setAddingSupplier(true)}>
-                Adicionar fornecedor
-              </Button>
-            ) : undefined
+            <div className="flex flex-wrap gap-2">
+              {!closed && openInvites.length > 1 && (
+                <Button size="sm" variant="outline" onClick={() => void copyAll()}>
+                  <Copy className="h-4 w-4" /> Copiar todos os links
+                </Button>
+              )}
+              {writable && q.status === "aberta" && (
+                <Button size="sm" onClick={() => setAddingSupplier(true)}>
+                  Adicionar fornecedor
+                </Button>
+              )}
+            </div>
           }
         >
           <p className="mb-3 text-sm text-muted-foreground">
-            Copie e envie o link de cada fornecedor. Os convites dão acesso somente aos itens e
-            anexos desta cotação.
+            Envie o link de cada fornecedor por WhatsApp, e-mail ou copiando. Cada link é pessoal e
+            dá acesso somente aos itens e projetos desta cotação. A situação mostra quem já abriu e
+            quem já enviou proposta.
           </p>
           {typeof window !== "undefined" &&
             ["localhost", "127.0.0.1"].includes(window.location.hostname) && (
@@ -150,6 +177,9 @@ function QuoteDetail() {
             )}
           {invites.map((i) => {
             const p = latest.find((p) => p.invite_id === i.id);
+            const status = inviteStatus(i, p);
+            const message = inviteMessage(q, workName, supplierLink(i.token));
+            const canSend = i.active && !closed;
             return (
               <div
                 key={i.id}
@@ -158,19 +188,33 @@ function QuoteDetail() {
                 <div>
                   <h3 className="font-medium">{i.supplier_name}</h3>
                   <p className="text-xs text-muted-foreground">
-                    {i.email || "Sem e-mail cadastrado"} ·{" "}
-                    {!i.active
-                      ? "Convite desativado"
-                      : p
-                        ? `Proposta recebida · Revisão ${p.version}`
-                        : "Aguardando proposta"}
+                    {i.email || "Sem e-mail cadastrado"}
                   </p>
+                  <p className={`text-xs ${toneClass[status.tone]}`}>{status.label}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {canSend && (
+                    <a
+                      className="inline-flex items-center gap-1 rounded border px-3 text-xs text-primary"
+                      href={whatsappUrl(message)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                    </a>
+                  )}
+                  {canSend && i.email && (
+                    <a
+                      className="inline-flex items-center gap-1 rounded border px-3 text-xs text-primary"
+                      href={mailtoUrl(i.email, `Cotação ${q.name} — ${workName}`, message)}
+                    >
+                      <Mail className="h-3.5 w-3.5" /> E-mail
+                    </a>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={!i.active || closed}
+                    disabled={!canSend}
                     onClick={() => void copy(i.token)}
                   >
                     Copiar link
@@ -223,6 +267,12 @@ function QuoteDetail() {
             );
           })}
         </Panel>
+        <QuoteProjectsPanel
+          quoteId={q.id}
+          quoteName={q.name}
+          workId={q.work_id}
+          canAdd={writable && !closed}
+        />
         <Panel title="Comparação das propostas">
           <p className="mb-3 text-xs text-muted-foreground">
             Propostas parciais estão identificadas. A comparação por item ajuda a conferir o mesmo

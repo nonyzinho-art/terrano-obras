@@ -32,6 +32,9 @@ export type Invite = {
   token: string;
   active: boolean;
   revision_allowed: boolean;
+  first_opened_at?: string | null;
+  last_opened_at?: string | null;
+  open_count?: number;
 };
 export type Price = { proposal_id: string; item_id: string; unit_price: number | null };
 export type Proposal = {
@@ -128,4 +131,70 @@ export function proposalCoverage(p: Proposal, items: QuoteItem[], prices: Price[
   const selected = prices.filter((x) => x.proposal_id === p.id && x.unit_price !== null);
   const covered = new Set(selected.map((x) => x.item_id));
   return { quoted: selected.length, complete: items.every((i) => covered.has(i.id)) };
+}
+
+/** Message sent with each supplier's personal link. */
+export function inviteMessage(quote: Pick<Quote, "name" | "deadline">, work: string, link: string) {
+  const [y, m, d] = quote.deadline.split("-");
+  return [
+    `Olá! A Terrano convida sua empresa para a cotação "${quote.name}" (${work}).`,
+    `Prazo para envio da proposta: ${d}/${m}/${y}.`,
+    `Pelo link abaixo você vê os itens, baixa os projetos e preenche os preços:`,
+    link,
+    `Este link é exclusivo da sua empresa — não compartilhe.`,
+  ].join("\n");
+}
+
+const digits = (phone: string) => phone.replace(/\D/g, "");
+/** wa.me link; Brazilian numbers without country code get 55. */
+export function whatsappUrl(message: string, phone = "") {
+  let number = digits(phone);
+  if (number && number.length <= 11) number = "55" + number;
+  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+}
+export function mailtoUrl(email: string, subject: string, message: string) {
+  return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+}
+
+export type InviteStatus = { label: string; tone: "muted" | "info" | "success" | "danger" };
+export function inviteStatus(invite: Invite, proposal?: Pick<Proposal, "version" | "created_at">) {
+  if (!invite.active) return { label: "Convite desativado", tone: "danger" } as InviteStatus;
+  if (proposal)
+    return {
+      label: `Proposta enviada${proposal.version > 1 ? ` · revisão ${proposal.version}` : ""} em ${shortDateTime(proposal.created_at)}`,
+      tone: "success",
+    } as InviteStatus;
+  if (invite.last_opened_at)
+    return {
+      label: `Abriu em ${shortDateTime(invite.last_opened_at)}${(invite.open_count ?? 0) > 1 ? ` · ${invite.open_count} acessos` : ""} · sem proposta`,
+      tone: "info",
+    } as InviteStatus;
+  return { label: "Ainda não abriu o link", tone: "muted" } as InviteStatus;
+}
+function shortDateTime(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export type QuoteDocument = {
+  id: string;
+  title: string;
+  filename: string;
+  size_bytes: number | null;
+  storage_path: string;
+};
+export async function loadQuoteDocuments(quoteId: string) {
+  const { data, error } = await getSupabase()
+    .from("quote_documents")
+    .select("work_documents(id,title,filename,size_bytes,storage_path)")
+    .eq("quote_id", quoteId);
+  if (error) throw error;
+  return ((data ?? []) as unknown as { work_documents: QuoteDocument | null }[])
+    .map((r) => r.work_documents)
+    .filter((d): d is QuoteDocument => !!d)
+    .sort((a, b) => a.title.localeCompare(b.title, "pt-BR", { numeric: true }));
 }

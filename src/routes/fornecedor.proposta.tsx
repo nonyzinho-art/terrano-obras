@@ -5,6 +5,7 @@ import { quoteError, type QuoteItem } from "@/lib/quotes";
 import { parseAmount } from "@/lib/budget-import";
 import { budgetHierarchy } from "@/lib/budget-hierarchy";
 import { fmtBRL, fmtNum, fmtDate } from "@/lib/format";
+import { downloadAllAsZip, groupByFolder } from "@/lib/project-files";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,35 @@ function SupplierProposal() {
   const [uncoted, setUncoted] = useState<Set<string>>(new Set());
   const key = useRef("");
   const submittedPayload = useRef("");
+  const loadedAt = useRef(0);
+  const [zipping, setZipping] = useState("");
+  const [zipError, setZipError] = useState("");
+  const zipAll = async () => {
+    if (!view) return;
+    setZipError("");
+    setZipping("Preparando…");
+    try {
+      let docs = view.documents;
+      // Download links last 10 minutes; ask for fresh ones when they are about to expire.
+      if (Date.now() - loadedAt.current > 8 * 60 * 1000) {
+        const { data, error } = await getSupabase().functions.invoke("quote-supplier", {
+          body: { token },
+        });
+        if (error || data?.error)
+          throw Error("Não foi possível renovar os links. Atualize a página.");
+        docs = (data as SupplierView).documents;
+        loadedAt.current = Date.now();
+        setView((v) => (v ? { ...v, documents: docs } : v));
+      }
+      await downloadAllAsZip(docs, `Projetos - ${view.name}`, (done, total) =>
+        setZipping(`Baixando ${done} de ${total}…`),
+      );
+    } catch (e) {
+      setZipError(quoteError(e));
+    } finally {
+      setZipping("");
+    }
+  };
   useEffect(() => {
     let live = true;
     const t = new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
@@ -77,6 +107,7 @@ function SupplierProposal() {
           throw Error(data?.error ?? "Convite inválido, desativado ou indisponível.");
         if (live) {
           const v = data as SupplierView;
+          loadedAt.current = Date.now();
           setView(v);
           setName(v.previous?.supplier_name ?? v.supplier);
           setCnpj(v.previous?.cnpj ?? "");
@@ -183,26 +214,49 @@ function SupplierProposal() {
             {view.notes && <p className="mt-3 whitespace-pre-wrap text-sm">{view.notes}</p>}
             {view.documents.length > 0 && (
               <div className="mt-4">
-                <h3 className="font-medium">Projetos e anexos</h3>
-                {view.documents.map((d) =>
-                  d.url ? (
-                    <a
-                      key={d.id}
-                      className="mt-2 block text-sm text-primary underline"
-                      href={d.url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {d.title} — baixar
-                    </a>
-                  ) : (
-                    <p key={d.id} className="mt-2 text-sm">
-                      {d.title} — solicite o arquivo à Terrano.
-                    </p>
-                  ),
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-medium">Projetos e anexos ({view.documents.length})</h3>
+                  {view.documents.some((d) => d.url) && (
+                    <Button size="sm" disabled={!!zipping} onClick={() => void zipAll()}>
+                      {zipping || "Baixar todos os projetos (.zip)"}
+                    </Button>
+                  )}
+                </div>
+                {zipError && (
+                  <p role="alert" className="mt-2 text-sm text-danger">
+                    {zipError}
+                  </p>
                 )}
+                <div className="mt-2 max-h-80 space-y-3 overflow-auto rounded border p-3">
+                  {groupByFolder(view.documents).map(([folder, docs]) => (
+                    <div key={folder}>
+                      {folder && (
+                        <p className="text-xs font-semibold text-muted-foreground">{folder}</p>
+                      )}
+                      {docs.map((d) => {
+                        const label = d.title.slice(d.title.lastIndexOf("/") + 1);
+                        return d.url ? (
+                          <a
+                            key={d.id}
+                            className="block truncate py-0.5 pl-3 text-sm text-primary underline"
+                            href={d.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {label}
+                          </a>
+                        ) : (
+                          <p key={d.id} className="py-0.5 pl-3 text-sm">
+                            {label} — solicite o arquivo à Terrano.
+                          </p>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Se o link do anexo expirar, atualize esta página antes de preencher a proposta.
+                  O .zip mantém as pastas do projeto. Se um link individual expirar, atualize esta
+                  página.
                 </p>
               </div>
             )}
