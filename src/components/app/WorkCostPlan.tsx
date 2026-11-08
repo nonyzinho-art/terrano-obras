@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, FileSpreadsheet, Upload } from "lucide-react";
 import { compactBRL, Panel, Stat } from "@/components/app/bits";
 import { CostPlanImportDialog } from "@/components/app/CostPlanImportDialog";
+import { CostFlowPanel } from "@/components/app/CostFlowPanel";
+import { DisbursementImportDialog } from "@/components/app/DisbursementImportDialog";
 import { Button } from "@/components/ui/button";
 import { useAccess } from "@/lib/access";
 import {
@@ -12,7 +14,14 @@ import {
   summarize,
   type CostPlanItem,
 } from "@/lib/cost-plan";
-import { costPlanError, loadCostPlanItems, loadCostPlans } from "@/lib/cost-plan-data";
+import {
+  costPlanError,
+  loadCostPlanItems,
+  loadCostPlans,
+  loadLatestDisbursements,
+} from "@/lib/cost-plan-data";
+import { buildCashFlow, type FrontFlow } from "@/lib/cost-flow";
+import { TODAY } from "@/lib/repository";
 import { fmtDate, fmtNum, fmtPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -31,11 +40,13 @@ function Row({
   details,
   open,
   onToggle,
+  flow,
 }: {
   item: CostPlanItem;
   details: CostPlanItem[];
   open: boolean;
   onToggle: () => void;
+  flow: FrontFlow | undefined;
 }) {
   const a = storedAmounts(item);
   const deviation = (a.forecast ?? a.viability) - a.viability;
@@ -61,6 +72,19 @@ function Row({
         </td>
         <td className="num px-3 py-2.5 text-right">{money(a.viability)}</td>
         <td className="num px-3 py-2.5 text-right">{money(a.committed)}</td>
+        <td
+          className={cn(
+            "num px-3 py-2.5 text-right",
+            flow && flow.overrun > 0.5 ? "font-semibold text-danger" : "text-muted-foreground",
+          )}
+          title={
+            flow && flow.overrun > 0.5
+              ? `Pago ${money(flow.overrun)} acima do contratado + a contratar`
+              : undefined
+          }
+        >
+          {flow ? money(flow.realized) : "—"}
+        </td>
         <td className="num px-3 py-2.5 text-right">{money(a.toContract)}</td>
         <td className="num px-3 py-2.5 text-right text-muted-foreground">
           {a.barter ? money(a.barter) : "—"}
@@ -91,6 +115,7 @@ function Row({
               <td className="px-4 py-1.5 pl-10">{d.service}</td>
               <td className="num px-3 py-1.5 text-right">{money(x.viability)}</td>
               <td className="num px-3 py-1.5 text-right">{money(x.committed)}</td>
+              <td />
               <td className="num px-3 py-1.5 text-right">{money(x.toContract)}</td>
               <td />
               <td className="num px-3 py-1.5 text-right">
@@ -108,10 +133,12 @@ function TotalRow({
   label,
   rows,
   strong,
+  paid,
 }: {
   label: string;
   rows: CostPlanItem[];
   strong?: boolean;
+  paid: number | null;
 }) {
   const t = summarize(rows.map(storedAmounts));
   return (
@@ -119,6 +146,7 @@ function TotalRow({
       <td className="px-4 py-2.5">{label}</td>
       <td className="num px-3 py-2.5 text-right">{money(t.viability)}</td>
       <td className="num px-3 py-2.5 text-right">{money(t.committed)}</td>
+      <td className="num px-3 py-2.5 text-right">{paid === null ? "—" : money(paid)}</td>
       <td className="num px-3 py-2.5 text-right">{money(t.toContract)}</td>
       <td className="num px-3 py-2.5 text-right">{t.barter ? money(t.barter) : "—"}</td>
       <td className="num px-3 py-2.5 text-right font-semibold">{money(t.forecast)}</td>
@@ -144,6 +172,12 @@ export function WorkCostPlan({ workId }: { workId: string }) {
     queryFn: () => loadCostPlanItems(plan!.id),
     enabled: !!plan,
   });
+  const disbursements = useQuery({
+    queryKey: ["cost-disbursements", workId],
+    queryFn: () => loadLatestDisbursements(workId),
+    enabled: !!plan,
+  });
+  const [importingFlow, setImportingFlow] = useState(false);
   const canImport = canWriteWork(workId);
   const importButton = canImport && (
     <Button variant={plan ? "outline" : "default"} onClick={() => setImporting(true)}>
@@ -212,6 +246,12 @@ export function WorkCostPlan({ workId }: { workId: string }) {
       ? [{ key: "geral", label: "Geral (todas as etapas)", rows: main.filter((i) => !i.stage) }]
       : []),
   ].filter((g) => filter === "todas" || g.key === String(filter));
+  const selection = groups.flatMap((g) => g.rows);
+  const flow = disbursements.data
+    ? buildCashFlow(rows, selection, disbursements.data.rows, TODAY)
+    : null;
+  const paidOf = (list: CostPlanItem[]) =>
+    flow ? list.reduce((sum, i) => sum + (flow.perFront.get(i.id)?.realized ?? 0), 0) : null;
   const toggle = (position: number) =>
     setOpen((current) => {
       const next = new Set(current);
@@ -297,12 +337,13 @@ export function WorkCostPlan({ workId }: { workId: string }) {
         }
       >
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-sm">
+          <table className="w-full min-w-[960px] text-sm">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
                 <th className="px-4 py-2.5 text-left font-normal">Frente de serviço</th>
                 <th className="px-3 py-2.5 text-right font-normal">Viabilidade</th>
                 <th className="px-3 py-2.5 text-right font-normal">Comprometido</th>
+                <th className="px-3 py-2.5 text-right font-normal">Pago (UAU)</th>
                 <th className="px-3 py-2.5 text-right font-normal">A contratar</th>
                 <th className="px-3 py-2.5 text-right font-normal">Permuta</th>
                 <th className="px-3 py-2.5 text-right font-normal">Previsão</th>
@@ -314,7 +355,7 @@ export function WorkCostPlan({ workId }: { workId: string }) {
               {groups.map((group) => (
                 <Fragment key={group.key}>
                   <tr className="border-b bg-muted/30">
-                    <td colSpan={8} className="px-4 py-2 text-xs font-semibold text-brand">
+                    <td colSpan={9} className="px-4 py-2 text-xs font-semibold text-brand">
                       {group.label}
                     </td>
                   </tr>
@@ -325,19 +366,22 @@ export function WorkCostPlan({ workId }: { workId: string }) {
                       details={detailsOf(item)}
                       open={open.has(item.position)}
                       onToggle={() => toggle(item.position)}
+                      flow={flow?.perFront.get(item.id)}
                     />
                   ))}
                   {filter === "todas" && groups.length > 1 && (
                     <TotalRow
                       label={`Subtotal · ${group.label.split(" · ")[0]}`}
                       rows={group.rows}
+                      paid={paidOf(group.rows)}
                     />
                   )}
                 </Fragment>
               ))}
               <TotalRow
                 label={filter === "todas" ? "Total da obra" : "Total da seleção"}
-                rows={groups.flatMap((g) => g.rows)}
+                rows={selection}
+                paid={paidOf(selection)}
                 strong
               />
             </tbody>
@@ -357,7 +401,26 @@ export function WorkCostPlan({ workId }: { workId: string }) {
           </div>
         )}
       </Panel>
+      <CostFlowPanel
+        flow={flow}
+        batch={disbursements.data?.batch ?? null}
+        loading={disbursements.isPending}
+        error={disbursements.error ? costPlanError(disbursements.error) : ""}
+        filtered={filter !== "todas"}
+        onImport={canImport ? () => setImportingFlow(true) : undefined}
+      />
       {dialog}
+      {importingFlow && (
+        <DisbursementImportDialog
+          workId={workId}
+          planInsumos={planInsumos(rows)}
+          onClose={() => setImportingFlow(false)}
+        />
+      )}
     </div>
   );
 }
+
+/** UAU insumo codes used by the plan (fronts and their detail rows). */
+const planInsumos = (rows: CostPlanItem[]) =>
+  new Set(rows.map((r) => r.insumo.trim()).filter((i) => /^[A-Z]d{3,}$/i.test(i)));
