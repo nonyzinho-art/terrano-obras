@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import {INVALID,QUESTIONS,backKeyboard,confirmKeyboard,isBack,isConfirm,menuAction,menuKeyboard,missing,parseEquipment,parseWeather,parseWorkers,savedText,summaryText,weatherKeyboard,type Field,type Summary} from "./diary.ts";
 const url = Deno.env.get("SUPABASE_URL")!;
 const roleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
@@ -91,21 +92,48 @@ Deno.serve(async(req:Request)=>{
    if(error) throw new Error("Falha ao atualizar conversa");
    return data;
   }
-  type Choice = {id:string;name:string;workName?:string};
+  type Choice = {id:string;name:string;workName?:string;budgetId?:string;budgetName?:string};
+  const today=()=>new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo"}).format(new Date());
   const buttons=(options:Choice[])=>({keyboard:options.map((w,i)=>[{text:(i+1)+". "+w.name}]).concat([[{text:"/cancelar"}]]),resize_keyboard:true,one_time_keyboard:true});
   function selected(options:Choice[]) {
    if(hasPhoto) return undefined;
    const index=/^\d+$/.test(text) ? Number(text)-1 : options.findIndex((w,i)=>text===(i+1)+". "+w.name);
    return Number.isSafeInteger(index) && index>=0 ? options[index] : undefined;
   }
+  // The last work and budget this person registered, if still open for the diary.
+  async function lastChoice(works:Choice[]):Promise<Choice|undefined> {
+   const {data}=await admin.from("daily_reports").select("work_id,budget_id").eq("created_by",account!.user_id).not("budget_id","is",null).order("created_at",{ascending:false}).limit(1).maybeSingle();
+   const work=data && works.find(w=>w.id===data.work_id);
+   if(!work) return undefined;
+   const {data:budgets,error}=await admin.rpc("telegram_budgets",{p_telegram:m.from.id,p_work:work.id});
+   const budget=error ? undefined : (budgets ?? []).find((b:Choice)=>b.id===data.budget_id);
+   return budget ? {id:work.id,name:"▶️ Continuar: "+work.name+" → "+budget.name,workName:work.name,budgetId:budget.id,budgetName:budget.name} : undefined;
+  }
   async function askWork() {
    const works=await availableWorks(true);
    if(!works.length) {
     await setConversation("done",[],null);
     await send(m.chat.id,"Nenhuma obra em andamento liberada para registro. Cadastre uma obra ou solicite acesso.");
-   } else if(await setConversation("choose_work",works,null)) {
-    await send(m.chat.id,"Vamos registrar seu diário. Escolha a obra em andamento:\n\n"+works.map((w,i)=>(i+1)+". "+w.name).join("\n")+"\n\nToque no botão da obra ou responda com o número.",buttons(works));
+    return;
    }
+   const last=await lastChoice(works);
+   const options:Choice[]=last ? [last,...works] : works;
+   if(await setConversation("choose_work",options,null)) {
+    await send(m.chat.id,(last ? "Vamos registrar seu diário. Continue na última obra ou escolha outra:" : "Vamos registrar seu diário. Escolha a obra em andamento:")+"\n\n"+options.map((w,i)=>(i+1)+". "+w.name).join("\n")+"\n\nToque no botão ou responda com o número.",buttons(options));
+   }
+  }
+  async function summary():Promise<Summary|null> {
+   const {data,error}=await admin.rpc("telegram_diary_resume",{p_telegram:m.from.id});
+   if(error) throw new Error("Falha ao consultar diário");
+   return data;
+  }
+  async function enterDiary(work:{id:string;name:string},budget:{id:string;name:string}) {
+   const choice={id:budget.id,name:budget.name,workName:work.name};
+   if(!await setConversation("observation",[choice],work.id,budget.id)) return;
+   const current=await summary();
+   const place=work.name+" → "+budget.name;
+   await send(m.chat.id,(current ? "Continuando o diário de hoje.\n\n"+summaryText(current,place,today()) : "Diário de hoje: "+place)+
+    "\n\nEnvie fotos (com legenda opcional) ou textos de observação a qualquer momento. Use os botões para clima, efetivo, equipamentos e ocorrências. Quando terminar, toque em Finalizar diário.",menuKeyboard);
   }
   async function askBudget(work:Choice) {
    const {data,error}=await admin.rpc("telegram_budgets",{p_telegram:m.from.id,p_work:work.id});
@@ -131,18 +159,56 @@ Deno.serve(async(req:Request)=>{
   if(active && session.stage==="choose_work") {
    const work=selected(session.options as Choice[]);
    if(!work) {await send(m.chat.id,"Escolha uma obra pelos botões ou responda com o número.",buttons(session.options));return response({ok:true});}
+   if(work.budgetId) {await enterDiary({id:work.id,name:work.workName ?? work.name},{id:work.budgetId,name:work.budgetName ?? ""});return response({ok:true});}
    await askBudget(work);return response({ok:true});
   }
   if(active && session.stage==="choose_budget") {
    const budget=selected(session.options as Choice[]);
    if(!budget) {await send(m.chat.id,"Escolha um orçamento pelos botões ou responda com o número.",buttons(session.options));return response({ok:true});}
-   if(await setConversation("observation",session.options,session.work_id,budget.id))
-    await send(m.chat.id,"Registro: "+budget.workName+" → "+budget.name+"\n\nEnvie agora uma ou várias fotos. A legenda é opcional.\nEnvie /concluir quando terminar ou /cancelar para sair.",{keyboard:[[{text:"/concluir"},{text:"/cancelar"}]],resize_keyboard:true});
+   await enterDiary({id:session.work_id,name:budget.workName ?? ""},budget);
    return response({ok:true});
   }
-  if(/^\/concluir(?:@Kanteiro_bot)?$/i.test(text)) {
-   if(await setConversation("done",[],null)) await send(m.chat.id,"Envio encerrado. As fotos já recebidas estão salvas no diário. No site, clique em Atualizar para consultar. Para outro registro, envie /diario.");
+  const action=hasPhoto ? undefined : menuAction(text);
+  if(action==="later") {
+   if(await setConversation("done",[],null)) await send(m.chat.id,"Rascunho guardado. O que você enviou já está no diário de hoje; para continuar, envie /diario e toque em Continuar. No site, clique em Atualizar para consultar.");
    return response({ok:true});
+  }
+  if(action && !active) {await send(m.chat.id,"Este registro expirou. Envie /diario e toque em Continuar.");return response({ok:true});}
+  if(active && session.stage==="observation" && !hasPhoto) {
+   const current=(session.options as Choice[]).find(f=>f.id===session.budget_id);
+   const place=(current?.workName ?? "Obra")+" → "+(current?.name ?? "orçamento");
+   const ask=async(field:Field|null,message:string,keyboard:unknown)=>{
+    const {data,error}=await admin.rpc("telegram_diary_await",{p_telegram:m.from.id,p_update:body.update_id,p_field:field});
+    if(error) {await send(m.chat.id,"Este registro expirou. Envie /diario para continuar.");return;}
+    if(data) await send(m.chat.id,message,keyboard);
+   };
+   const save=async(field:Field,value:unknown)=>{
+    const {data,error}=await admin.rpc("telegram_diary_field",{p_update:body.update_id,p_telegram:m.from.id,p_field:field,p_value:value});
+    if(error) {await send(m.chat.id,"Não consegui salvar: "+(error.message || "tente novamente")+".",menuKeyboard);return;}
+    if(field==="finalize") await send(m.chat.id,"✅ Diário de "+today()+" finalizado!\n\n"+summaryText(data,place,today())+"\n\nNo site ele aparece como finalizado. Para um novo registro, envie /diario.");
+    else await send(m.chat.id,savedText(field,data)+"\n\nO que mais? Envie fotos ou use os botões.",menuKeyboard);
+   };
+   if(action==="summary") {await ask(null,summaryText(await summary(),place,today()),menuKeyboard);return response({ok:true});}
+   if(action==="finalize") {
+    const s=await summary();
+    const gaps=missing(s);
+    await ask("finalize",summaryText(s,place,today())+(gaps.length ? "\n\nAtenção: falta "+gaps.join(" e ")+"." : "")+"\n\nDepois de finalizado, o diário fica só para consulta. Confirma?",confirmKeyboard);
+    return response({ok:true});
+   }
+   if(action) {await ask(action,QUESTIONS[action],action==="weather" ? weatherKeyboard : backKeyboard);return response({ok:true});}
+   if(isBack(text)) {await ask(null,"Ok. Envie fotos ou use os botões.",menuKeyboard);return response({ok:true});}
+   if(session.awaiting==="finalize") {
+    if(isConfirm(text)) await save("finalize",null);
+    else await ask(null,"Finalização cancelada. Continue enviando ou toque em Finalizar diário.",menuKeyboard);
+    return response({ok:true});
+   }
+   if(session.awaiting && text && !text.startsWith("/")) {
+    const field=session.awaiting as Exclude<Field,"finalize">;
+    const value=field==="weather" ? parseWeather(text) : field==="workers" ? parseWorkers(text) : field==="equipment" ? parseEquipment(text) : text.length<=2000 ? text : undefined;
+    if(value===undefined) {await send(m.chat.id,INVALID[field],field==="weather" ? weatherKeyboard : backKeyboard);return response({ok:true});}
+    await save(field,value);
+    return response({ok:true});
+   }
   }
   if(active && session.stage==="observation" && (hasPhoto || !text.startsWith("/"))) {
    if(!session.budget_id) {await askWork();return response({ok:true});}
@@ -175,11 +241,10 @@ Deno.serve(async(req:Request)=>{
    const budget=(session.options as Choice[]).find(f=>f.id===session.budget_id);
    const name=budget?.workName ?? "sua obra";
    const budgetName=budget?.name ?? "seu orçamento";
-   const today=new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo"}).format(new Date());
-   await send(m.chat.id,(hasPhoto ? "Foto salva!" : "Texto salvo!")+"\n"+name+" → "+budgetName+" → "+today+"\n\nPode enviar mais fotos para este mesmo diário. Quando terminar, envie /concluir.\nNo site, clique em Atualizar e abra o dia de hoje no calendário.");
+   await send(m.chat.id,(hasPhoto ? "📷 Foto salva" : "📝 Observação salva")+" — "+name+" → "+budgetName+" → "+today()+"\n\nPode enviar mais fotos. Use os botões para clima, efetivo, equipamentos e ocorrências, e Finalizar diário quando terminar.",menuKeyboard);
    return response({ok:true});
   }
-  await send(m.chat.id,"Para registrar fotos da obra, envie /diario. Escolha a obra, o orçamento e envie suas fotos com legenda opcional.\n\n/obras — consultar suas obras\n/cancelar — cancelar um registro");
+  await send(m.chat.id,"Para registrar o diário, envie /diario. Escolha a obra (ou continue na última), envie fotos e use os botões para clima, efetivo, equipamentos, ocorrências e finalizar.\n\n/obras — consultar suas obras\n/cancelar — cancelar um registro");
   return response({ok:true});
  } catch {
   // Never log credentials, link codes, message bodies or token-bearing URLs.
