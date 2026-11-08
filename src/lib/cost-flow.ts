@@ -130,6 +130,9 @@ export interface CashFlowMonth {
   cumulative: number;
 }
 
+/** Planned cash per item position and month (yyyy-mm-01). */
+export type MonthGrid = Map<number, Map<string, number>>;
+
 /** Insumo codes look like "I04363"; plain item numbers ("13") are not UAU insumos. */
 const isInsumo = (code: string) => /^[A-Z]\d{3,}$/i.test(code.trim());
 
@@ -144,12 +147,16 @@ const isInsumo = (code: string) => /^[A-Z]\d{3,}$/i.test(code.trim());
  * - Contracted and not yet paid or scheduled: this month.
  * - To contract: spread evenly over the front's duration, from its start month (or this
  *   month, whichever is later).
+ * When `planned` is given (the monthly grid of an approved revision, by item position),
+ * the projection from the current month on comes from it instead of the rule above.
+ * `ruleByFront` always holds the rule-based projection, used to seed a new grid.
  */
 export function buildCashFlow(
   allItems: CostPlanItem[],
   fronts: CostPlanItem[],
   disbursements: DisbursementRow[],
   today: string,
+  planned?: MonthGrid,
 ) {
   const current = today.slice(0, 7) + "-01";
   const paid = new Map<string, Map<string, number>>();
@@ -190,12 +197,21 @@ export function buildCashFlow(
   const realizedByMonth = new Map<string, number>();
   const projectedByMonth = new Map<string, number>();
   const perFront = new Map<string, FrontFlow>();
+  const ruleByFront: MonthGrid = new Map();
   for (const front of fronts) {
     if (isDeduction(front.service) || front.parent_position !== null) continue;
     let realized = 0;
     let programmed = 0;
-    const project = (month: string, value: number) =>
-      projectedByMonth.set(month, (projectedByMonth.get(month) ?? 0) + value);
+    const rule = new Map<string, number>();
+    ruleByFront.set(front.position, rule);
+    const project = (month: string, value: number) => {
+      rule.set(month, (rule.get(month) ?? 0) + value);
+      if (!planned) projectedByMonth.set(month, (projectedByMonth.get(month) ?? 0) + value);
+    };
+    if (planned)
+      for (const [month, value] of planned.get(front.position) ?? [])
+        if (month >= current)
+          projectedByMonth.set(month, (projectedByMonth.get(month) ?? 0) + value);
     for (const insumo of insumosOf(front)) {
       const part = share(front, insumo);
       for (const [month, amount] of paid.get(insumo) ?? []) {
@@ -244,9 +260,13 @@ export function buildCashFlow(
     (best, s) => (!best || s.projected > best.projected ? s : best),
     null,
   );
+  for (const rule of ruleByFront.values())
+    for (const [month, value] of rule) rule.set(month, round(value));
   return {
     series,
     perFront,
+    ruleByFront,
+    usesPlannedGrid: !!planned,
     realized: round(totals.realized),
     remaining: round(totals.remaining),
     overrun: round(totals.overrun),

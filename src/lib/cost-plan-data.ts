@@ -3,15 +3,50 @@
 import { getSupabase } from "./supabase";
 import type { CostPlan, CostPlanImportItem, CostPlanItem, CostPlanStage } from "./cost-plan";
 import type { DisbursementRow } from "./cost-flow";
+import type { MonthValue } from "./cost-revision";
 
+/** All revisions of the work, newest first ("*" keeps working before newer columns exist). */
 export async function loadCostPlans(workId: string) {
   const { data, error } = await getSupabase()
     .from("cost_plans")
-    .select("id,work_id,name,revision,source_filename,stages,imported_at")
+    .select("*")
     .eq("work_id", workId)
     .order("revision", { ascending: false });
   if (error) throw error;
   return (data ?? []) as CostPlan[];
+}
+
+export async function loadMonthValues(planId: string) {
+  const rows: MonthValue[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await getSupabase()
+      .from("cost_plan_month_values")
+      .select("position,month,amount")
+      .eq("plan_id", planId)
+      .order("position")
+      .order("month")
+      .range(offset, offset + 999);
+    if (error) {
+      // Before the monthly re-planning is enabled in the database there are no grids yet.
+      if (/cost_plan_month_values/.test(error.message)) return [];
+      throw error;
+    }
+    rows.push(...(data ?? []).map((r) => ({ ...r, amount: Number(r.amount) }) as MonthValue));
+    if ((data ?? []).length < 1000) return rows;
+  }
+}
+
+/** criar · salvar · enviar · descartar · aprovar · devolver */
+export async function revisionAction(
+  action: "criar" | "salvar" | "enviar" | "descartar" | "aprovar" | "devolver",
+  payload: Record<string, unknown>,
+) {
+  const { data, error } = await getSupabase().rpc("cost_plan_revision_action", {
+    p_action: action,
+    p_payload: payload,
+  });
+  if (error) throw error;
+  return String(data);
 }
 
 export async function loadCostPlanItems(planId: string) {

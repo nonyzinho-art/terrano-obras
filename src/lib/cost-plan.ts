@@ -48,6 +48,8 @@ export interface CostPlanItem {
   forecast: number | null;
   start_month: string | null;
   duration_months: number | null;
+  /** Engineer's justification when the forecast changes in a monthly revision. */
+  note?: string;
 }
 
 export interface CostPlan {
@@ -58,6 +60,14 @@ export interface CostPlan {
   source_filename: string | null;
   stages: CostPlanStage[];
   imported_at: string;
+  /** Monthly re-planning workflow; imports start approved. */
+  status?: "rascunho" | "enviada" | "aprovada" | "devolvida";
+  competence?: string;
+  base_plan_id?: string | null;
+  version?: number;
+  submitted_at?: string | null;
+  decided_at?: string | null;
+  decision_comment?: string;
 }
 
 const clean = (v: unknown) => String(v ?? "").trim();

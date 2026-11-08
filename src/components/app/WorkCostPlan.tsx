@@ -19,8 +19,14 @@ import {
   loadCostPlanItems,
   loadCostPlans,
   loadLatestDisbursements,
+  loadMonthValues,
+  revisionAction,
 } from "@/lib/cost-plan-data";
 import { buildCashFlow, type FrontFlow } from "@/lib/cost-flow";
+import { CostPlanRevisionEditor } from "@/components/app/CostPlanRevisionEditor";
+import { REVISION_STATUS, gridFromRows, gridToRows, monthOf, seedGrid } from "@/lib/cost-revision";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { TODAY } from "@/lib/repository";
 import { fmtDate, fmtNum, fmtPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -157,7 +163,13 @@ function TotalRow({
 }
 
 export function WorkCostPlan({ workId }: { workId: string }) {
-  const { canWriteWork } = useAccess();
+  const { canWriteWork, profile } = useAccess();
+  const queryClient = useQueryClient();
+  const canApprove = ["administrador", "diretor", "coordenador_obras"].includes(
+    profile?.role ?? "",
+  );
+  const [editing, setEditing] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [planId, setPlanId] = useState("");
   const [filter, setFilter] = useState<Filter>("todas");
@@ -166,7 +178,11 @@ export function WorkCostPlan({ workId }: { workId: string }) {
     queryKey: ["cost-plans", workId],
     queryFn: () => loadCostPlans(workId),
   });
-  const plan = plans.data?.find((p) => p.id === planId) ?? plans.data?.[0];
+  const approved = (plans.data ?? []).filter((p) => !p.status || p.status === "aprovada");
+  const openRevision = (plans.data ?? []).find(
+    (p) => p.status === "rascunho" || p.status === "enviada" || p.status === "devolvida",
+  );
+  const plan = approved.find((p) => p.id === planId) ?? approved[0];
   const items = useQuery({
     queryKey: ["cost-plan-items", plan?.id],
     queryFn: () => loadCostPlanItems(plan!.id),
@@ -175,6 +191,11 @@ export function WorkCostPlan({ workId }: { workId: string }) {
   const disbursements = useQuery({
     queryKey: ["cost-disbursements", workId],
     queryFn: () => loadLatestDisbursements(workId),
+    enabled: !!plan,
+  });
+  const months = useQuery({
+    queryKey: ["cost-plan-months", plan?.id],
+    queryFn: () => loadMonthValues(plan!.id),
     enabled: !!plan,
   });
   const [importingFlow, setImportingFlow] = useState(false);
@@ -195,7 +216,7 @@ export function WorkCostPlan({ workId }: { workId: string }) {
     />
   );
 
-  if (plans.isPending || (plan && items.isPending))
+  if (plans.isPending || (plan && (items.isPending || months.isPending)))
     return <p className="text-sm text-muted-foreground">Carregando planejamento…</p>;
   if (plans.error || items.error)
     return (
@@ -222,6 +243,98 @@ export function WorkCostPlan({ workId }: { workId: string }) {
     );
 
   const rows = items.data ?? [];
+  const current = monthOf(TODAY);
+  const plannedGrid = months.data?.length ? gridFromRows(months.data) : undefined;
+  const startRevision = async () => {
+    setStarting(true);
+    try {
+      const seed = seedGrid(rows, disbursements.data?.rows ?? [], TODAY, plannedGrid);
+      await revisionAction("criar", {
+        work_id: workId,
+        competence: current,
+        values: gridToRows(seed, current),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["cost-plans", workId] });
+      setEditing(true);
+    } catch (e) {
+      toast.error(costPlanError(e));
+    } finally {
+      setStarting(false);
+    }
+  };
+  if (editing && openRevision && openRevision.base_plan_id === plan.id)
+    return (
+      <CostPlanRevisionEditor
+        revision={openRevision}
+        baseItems={rows}
+        disbursements={disbursements.data?.rows ?? []}
+        canEdit={canWriteWork(workId)}
+        canApprove={canApprove}
+        onClose={() => {
+          setEditing(false);
+          setPlanId("");
+        }}
+      />
+    );
+  const monthLabel = new Date(current + "T12:00:00").toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+  });
+  const revisionBanner = openRevision ? (
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between",
+        openRevision.status === "devolvida"
+          ? "border-danger/30 bg-danger-soft"
+          : "border-warning/40 bg-warning-soft",
+      )}
+    >
+      <div className="text-sm">
+        <strong>{openRevision.name}</strong> · {REVISION_STATUS[openRevision.status!]}
+        {openRevision.status === "devolvida" && openRevision.decision_comment && (
+          <span className="block text-xs">Coordenação: {openRevision.decision_comment}</span>
+        )}
+      </div>
+      <Button
+        onClick={() => {
+          setPlanId(openRevision.base_plan_id ?? "");
+          setEditing(true);
+        }}
+      >
+        {openRevision.status === "enviada"
+          ? canApprove
+            ? "Revisar e aprovar"
+            : "Ver revisão"
+          : canWriteWork(workId)
+            ? "Continuar replanejamento"
+            : "Ver revisão"}
+      </Button>
+    </div>
+  ) : canWriteWork(workId) && plan.id === approved[0]?.id ? (
+    <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-sm">
+        {(plan.competence ?? "") < current ? (
+          <>
+            <strong>O planejamento de {monthLabel} ainda não foi revisado.</strong>
+            <span className="block text-xs text-muted-foreground">
+              Replaneje o saldo de cada frente mês a mês e envie para a coordenação aprovar.
+            </span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">
+            Planejamento de {monthLabel} aprovado. Abra uma nova revisão se precisar replanejar.
+          </span>
+        )}
+      </div>
+      <Button
+        variant={(plan.competence ?? "") < current ? "default" : "outline"}
+        disabled={starting}
+        onClick={() => void startRevision()}
+      >
+        {starting ? "Abrindo…" : `Iniciar revisão de ${monthLabel}`}
+      </Button>
+    </div>
+  ) : null;
   const top = rows.filter((i) => i.parent_position === null);
   const main = top.filter((i) => !isDeduction(i.service));
   const deductions = top.filter((i) => isDeduction(i.service));
@@ -248,7 +361,7 @@ export function WorkCostPlan({ workId }: { workId: string }) {
   ].filter((g) => filter === "todas" || g.key === String(filter));
   const selection = groups.flatMap((g) => g.rows);
   const flow = disbursements.data
-    ? buildCashFlow(rows, selection, disbursements.data.rows, TODAY)
+    ? buildCashFlow(rows, selection, disbursements.data.rows, TODAY, plannedGrid)
     : null;
   const paidOf = (list: CostPlanItem[]) =>
     flow ? list.reduce((sum, i) => sum + (flow.perFront.get(i.id)?.realized ?? 0), 0) : null;
@@ -276,6 +389,7 @@ export function WorkCostPlan({ workId }: { workId: string }) {
 
   return (
     <div className="space-y-6">
+      {revisionBanner}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <select
@@ -287,14 +401,15 @@ export function WorkCostPlan({ workId }: { workId: string }) {
               setOpen(new Set());
             }}
           >
-            {plans.data!.map((p) => (
+            {approved.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} (revisão {p.revision})
               </option>
             ))}
           </select>
           <span className="text-xs text-muted-foreground">
-            importado em {fmtDate(plan.imported_at)}
+            {plan.decided_at ? "aprovado" : "importado"} em{" "}
+            {fmtDate(plan.decided_at ?? plan.imported_at)}
             {plan.source_filename ? ` · ${plan.source_filename}` : ""}
           </span>
         </div>

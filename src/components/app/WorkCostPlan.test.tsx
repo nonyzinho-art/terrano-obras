@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CostPlanItem } from "@/lib/cost-plan";
 
 const item = (position: number, service: string, values: Partial<CostPlanItem>): CostPlanItem => ({
@@ -26,15 +26,23 @@ const mocks = vi.hoisted(() => ({
   plans: vi.fn(),
   items: vi.fn(),
   disbursements: vi.fn(async () => null as unknown),
+  months: vi.fn(async (_id: string) => [] as unknown[]),
+  action: vi.fn(async (_action: string, _payload: unknown) => "ok"),
+  role: "engenheiro",
 }));
 vi.mock("@/lib/cost-plan-data", () => ({
   loadCostPlans: mocks.plans,
   loadCostPlanItems: mocks.items,
   loadLatestDisbursements: mocks.disbursements,
+  loadMonthValues: mocks.months,
+  revisionAction: mocks.action,
   costPlanError: (e: unknown) => String(e),
 }));
 vi.mock("@/lib/repository", () => ({ TODAY: "2026-11-08" }));
-vi.mock("@/lib/access", () => ({ useAccess: () => ({ canWriteWork: () => true }) }));
+vi.mock("@/lib/access", () => ({
+  useAccess: () => ({ canWriteWork: () => true, profile: { role: mocks.role, active: true } }),
+}));
+vi.mock("./UnsavedChangesGuard", () => ({ UnsavedChangesGuard: () => null }));
 vi.mock("./CostPlanImportDialog", () => ({ CostPlanImportDialog: () => null }));
 vi.mock("./DisbursementImportDialog", () => ({ DisbursementImportDialog: () => null }));
 // Charts need real layout; the panel's numbers are what matter here.
@@ -160,4 +168,126 @@ it("convida a importar quando a obra ainda não tem planejamento", async () => {
   show();
   expect(await screen.findByText("Traga o planejamento de custos da obra")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Importar planilha" })).toBeInTheDocument();
+});
+
+describe("replanejamento mensal", () => {
+  const rev05 = {
+    id: "p",
+    work_id: "w",
+    name: "REV 05",
+    revision: 1,
+    source_filename: null,
+    stages: [],
+    imported_at: "2026-10-20T10:00:00Z",
+    status: "aprovada",
+    competence: "2026-10-01",
+    version: 1,
+  };
+  const paving = item(0, "PAVIMENTAÇÃO", {
+    insumo: "I04363",
+    stage: 1,
+    viability: 1000,
+    committed: 600,
+    to_contract: 300,
+    barter: 200,
+    forecast: 1100,
+    start_month: "2027-01-01",
+    duration_months: 3,
+  });
+  beforeEach(() => {
+    mocks.action.mockClear();
+    mocks.items.mockResolvedValue([paving]);
+    mocks.disbursements.mockResolvedValue(null);
+  });
+
+  it("abre a revisão do mês partindo da projeção automática", async () => {
+    mocks.role = "engenheiro";
+    mocks.plans.mockResolvedValue([rev05]);
+    mocks.months.mockResolvedValue([]);
+    show();
+    expect(await screen.findByText(/ainda não foi revisado/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar revisão de novembro de 2026" }));
+    await waitFor(() => expect(mocks.action).toHaveBeenCalledTimes(1));
+    expect(mocks.action).toHaveBeenCalledWith("criar", {
+      work_id: "w",
+      competence: "2026-11-01",
+      values: [
+        { position: 0, month: "2026-11-01", amount: 600 },
+        { position: 0, month: "2027-01-01", amount: 100 },
+        { position: 0, month: "2027-02-01", amount: 100 },
+        { position: 0, month: "2027-03-01", amount: 100 },
+      ],
+    });
+  });
+
+  it("só envia quando todo o saldo está distribuído", async () => {
+    mocks.role = "engenheiro";
+    mocks.plans.mockResolvedValue([
+      {
+        ...rev05,
+        id: "r",
+        name: "Revisão 11/2026",
+        revision: 2,
+        status: "rascunho",
+        base_plan_id: "p",
+        competence: "2026-11-01",
+      },
+      rev05,
+    ]);
+    mocks.months.mockImplementation(async (id: string) =>
+      id === "r" ? [{ position: 0, month: "2026-11-01", amount: 600 }] : [],
+    );
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Continuar replanejamento" }));
+    const send = await screen.findByRole("button", { name: /Enviar para aprovação/ });
+    expect(send).toBeDisabled();
+    expect(screen.getByText(/1 frente\(s\) com saldo não alocado/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Distribuir saldo de PAVIMENTAÇÃO" }));
+    expect(send).toBeEnabled();
+    fireEvent.click(send);
+    await waitFor(() => expect(mocks.action).toHaveBeenCalledTimes(2));
+    expect(mocks.action.mock.calls[0]![0]).toBe("salvar");
+    expect(mocks.action.mock.calls[0]![1]).toMatchObject({
+      plan_id: "r",
+      version: 1,
+      values: [
+        { position: 0, month: "2027-01-01", amount: 300 },
+        { position: 0, month: "2027-02-01", amount: 300 },
+        { position: 0, month: "2027-03-01", amount: 300 },
+      ],
+    });
+    expect(mocks.action.mock.calls[1]).toEqual([
+      "enviar",
+      { plan_id: "r", version: 2, comment: "" },
+    ]);
+  });
+
+  it("a coordenação aprova a revisão enviada", async () => {
+    mocks.role = "coordenador_obras";
+    mocks.plans.mockResolvedValue([
+      {
+        ...rev05,
+        id: "r",
+        name: "Revisão 11/2026",
+        revision: 2,
+        status: "enviada",
+        base_plan_id: "p",
+        version: 3,
+      },
+      rev05,
+    ]);
+    mocks.months.mockResolvedValue([]);
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Revisar e aprovar" }));
+    expect(await screen.findByText("Aguardando aprovação")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Devolver com comentário/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Aprovar revisão/ }));
+    await waitFor(() =>
+      expect(mocks.action).toHaveBeenCalledWith("aprovar", {
+        plan_id: "r",
+        version: 3,
+        comment: "",
+      }),
+    );
+  });
 });
