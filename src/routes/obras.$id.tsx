@@ -49,10 +49,12 @@ import { cn } from "@/lib/utils";
 import { BudgetStatusBadge } from "@/components/app/BudgetStatusBadge";
 import { WorkFronts } from "@/components/app/WorkFronts";
 import { WorkDocuments } from "@/components/app/WorkDocuments";
+import { WorkCostPlan } from "@/components/app/WorkCostPlan";
 import { useAccess, canWriteWork } from "@/lib/access";
 
 const TABS = [
   { id: "geral", label: "Visão geral" },
+  { id: "planejamento", label: "Planejamento" },
   { id: "evolucao", label: "Evolução física" },
   { id: "orcamentos", label: "Orçamentos" },
   { id: "diario", label: "Diário de obras" },
@@ -196,6 +198,7 @@ function WorkDetail() {
       </div>
 
       {tab === "geral" && <Overview workId={w.id} />}
+      {tab === "planejamento" && <WorkCostPlan key={`planejamento-${w.id}`} workId={w.id} />}
       {tab === "evolucao" && <Evolution workId={w.id} />}
       {tab === "orcamentos" && <WorkBudgets workId={w.id} />}
       {tab === "diario" && <WorkDiary workId={w.id} onNew={() => setNewOpen(true)} />}
