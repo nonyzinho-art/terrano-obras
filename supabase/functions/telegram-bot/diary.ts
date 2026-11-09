@@ -199,3 +199,32 @@ export const reminderKeyboard = {
   resize_keyboard: true,
   one_time_keyboard: true,
 };
+
+export type SummaryWork = {
+  work: string;
+  status: "finalizado" | "rascunho" | "sem_diario";
+  workers: number | null;
+  photos: number;
+  issues: string[];
+};
+/** Resumo das 18:00 para a coordenação: situação do diário de cada obra e ocorrências. */
+export function coordinationText(date: string, works: SummaryWork[]) {
+  const icon = { finalizado: "✅", rascunho: "📝", sem_diario: "❌" } as const;
+  const label = { finalizado: "finalizado", rascunho: "rascunho, não finalizado", sem_diario: "sem diário" } as const;
+  const done = works.filter((w) => w.status === "finalizado").length;
+  const lines = works.map((w) => {
+    const detail = [
+      w.workers ? `${w.workers} pessoa(s)` : "",
+      w.photos ? `${w.photos} foto(s)` : "",
+    ].filter(Boolean);
+    return `${icon[w.status]} ${w.work}: ${label[w.status]}${detail.length ? ` · ${detail.join(" · ")}` : ""}`;
+  });
+  const issues = works.flatMap((w) => w.issues.map((i) => `• ${w.work}: ${i}`));
+  return [
+    `📊 Resumo do dia — ${date}`,
+    `${done} de ${works.length} obra(s) com diário finalizado.`,
+    "",
+    ...lines,
+    ...(issues.length ? ["", "⚠️ Ocorrências do dia:", ...issues] : ["", "Nenhuma ocorrência registrada hoje."]),
+  ].join("\n");
+}

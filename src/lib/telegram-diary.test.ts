@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BACK,
   CONFIRM,
+  coordinationText,
   MENU,
   WEATHER_BUTTONS,
   isBack,
@@ -97,5 +98,26 @@ describe("lembrete das 17:30", () => {
     expect(text).toContain("• Brisas do Sul: ainda sem diário hoje");
     expect(text).toContain("• Reserva do Parque: rascunho aberto (6 foto(s)) — falta finalizar");
     expect(text).toContain("/diario");
+  });
+});
+
+describe("resumo das 18:00", () => {
+  it("mostra a situação de cada obra e as ocorrências", () => {
+    const text = coordinationText("09/11/2026", [
+      {
+        work: "Brisas do Sul",
+        status: "finalizado",
+        workers: 12,
+        photos: 6,
+        issues: ["Chuva parou a drenagem"],
+      },
+      { work: "Reserva do Parque", status: "rascunho", workers: null, photos: 2, issues: [] },
+      { work: "Flor da Terra", status: "sem_diario", workers: null, photos: 0, issues: [] },
+    ]);
+    expect(text).toContain("1 de 3 obra(s) com diário finalizado.");
+    expect(text).toContain("✅ Brisas do Sul: finalizado · 12 pessoa(s) · 6 foto(s)");
+    expect(text).toContain("📝 Reserva do Parque: rascunho, não finalizado · 2 foto(s)");
+    expect(text).toContain("❌ Flor da Terra: sem diário");
+    expect(text).toContain("• Brisas do Sul: Chuva parou a drenagem");
   });
 });

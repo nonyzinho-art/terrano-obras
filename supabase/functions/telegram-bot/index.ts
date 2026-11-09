@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
-import {INVALID,PHOTO_HELP,QUESTIONS,backKeyboard,confirmKeyboard,isBack,isConfirm,menuAction,menuKeyboard,missing,parseEquipment,parseWeather,parseWorkers,reminderKeyboard,reminderText,savedText,summaryText,weatherKeyboard,type Field,type Summary} from "./diary.ts";
+import {INVALID,PHOTO_HELP,QUESTIONS,backKeyboard,confirmKeyboard,coordinationText,isBack,isConfirm,menuAction,menuKeyboard,missing,parseEquipment,parseWeather,parseWorkers,reminderKeyboard,reminderText,savedText,summaryText,weatherKeyboard,type Field,type Summary} from "./diary.ts";
 const url = Deno.env.get("SUPABASE_URL")!;
 const roleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
@@ -31,6 +31,19 @@ Deno.serve(async(req:Request)=>{
    let sent=0;
    for(const person of data.people ?? []) {
     try {await send(person.telegram_user_id,reminderText(data.date,person.works),reminderKeyboard);sent++;} catch {/* blocked bot or deleted chat */}
+   }
+   return response({sent});
+  }
+  // 18:00 summary for the coordination, same schedule key as the reminder.
+  if(body.action==="summary") {
+   if(!botToken) return response({error:"Configuração pendente"},503);
+   const {data,error}=await admin.rpc("telegram_coordination_summary",{p_key:typeof body.key==="string" ? body.key : ""});
+   if(error || !data) return response({error:"Não autorizado"},401);
+   if(!data.works?.length) return response({sent:0});
+   const message=coordinationText(data.date,data.works);
+   let sent=0;
+   for(const chat of data.recipients ?? []) {
+    try {await send(chat,message);sent++;} catch {/* blocked bot or deleted chat */}
    }
    return response({sent});
   }
