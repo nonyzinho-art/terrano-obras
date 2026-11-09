@@ -24,3 +24,19 @@ export function importRevisionProtection(
     family,
   };
 }
+
+/** Agrupa as revisões de cada orçamento: a mais recente primeiro. */
+export function groupRevisions(budgets: Budget[]) {
+  const families = new Map<string, Budget[]>();
+  for (const b of budgets) {
+    const key = budgetFamilyKey(b);
+    families.set(key, [...(families.get(key) ?? []), b]);
+  }
+  return [...families.values()]
+    .map((list) =>
+      list.sort(
+        (a, b) => (b.revision ?? 1) - (a.revision ?? 1) || b.updated_at.localeCompare(a.updated_at),
+      ),
+    )
+    .sort((a, b) => a[0]!.name.localeCompare(b[0]!.name, "pt-BR"));
+}

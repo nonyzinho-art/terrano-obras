@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { importRevisionProtection } from "./budget-revisions";
+import { groupRevisions, importRevisionProtection } from "./budget-revisions";
 import type { Budget, BudgetMeasurement, DailyReport, Photo } from "./types";
 const budget: Budget = {
   id: "b",
@@ -43,4 +43,15 @@ it("protege diário sem quantidade e foto vinculada sem inventar produção", ()
   expect(
     importRevisionProtection([budget], [], [], [{ budget_id: "b" } as Photo], "w", "Drenagem"),
   ).toMatchObject({ blocked: true, photoCount: 1 });
+});
+
+it("agrupa as revisões de cada orçamento, com a mais recente primeiro", () => {
+  const b = (id: string, name: string, revision: number) =>
+    ({ id, work_id: "w", name, revision, status: "aprovado", updated_at: "2026-11-01" }) as Budget;
+  const groups = groupRevisions([
+    b("d1", "Drenagem", 1),
+    b("p1", "Pavimentação", 1),
+    b("d2", " drenagem ", 2),
+  ]);
+  expect(groups.map((g) => g.map((x) => x.id))).toEqual([["d2", "d1"], ["p1"]]);
 });
