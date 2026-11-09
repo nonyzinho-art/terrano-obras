@@ -46,7 +46,13 @@ function Kpi({
 }
 
 const LEGEND = [
-  { key: "planned", label: "Previsto", stroke: "var(--muted-foreground)", dash: "5 4" },
+  {
+    key: "planned",
+    label: "Previsto (linha de base)",
+    stroke: "var(--muted-foreground)",
+    dash: "5 4",
+  },
+  { key: "replanned", label: "Replanejado (datas atuais)", stroke: "var(--chart-2)", dash: "2 3" },
   { key: "executed", label: "Executado (medições aprovadas)", stroke: "var(--primary)" },
   { key: "paid", label: "Pago (adiantamentos + líquido)", stroke: "var(--warning)" },
 ] as const;
@@ -70,6 +76,7 @@ export function EarnedValuePanel({
         : delay < 0
           ? `${fmtNum(-delay)} dia(s) adiantado`
           : "Em dia";
+  const legend = LEGEND.filter((l) => l.key !== "replanned" || ev.replannedDiffers);
   const data = ev.series.map((p) => ({ ...p, label: monthShort(p.month) }));
   const currentLabel = data.find((p) => p.month === ev.currentMonth)?.label;
   return (
@@ -87,7 +94,7 @@ export function EarnedValuePanel({
               value={ev.hasPlan ? compactBRL.format(ev.plannedToday) : "—"}
               hint={
                 ev.hasPlan
-                  ? `de ${compactBRL.format(ev.plannedTotal)} planejados`
+                  ? `de ${compactBRL.format(ev.plannedTotal)}${ev.usesBaseline ? " · linha de base" : " planejados"}`
                   : "defina as datas"
               }
             />
@@ -161,7 +168,7 @@ export function EarnedValuePanel({
                 {currentLabel && (
                   <ReferenceLine x={currentLabel} stroke="var(--border)" strokeDasharray="2 2" />
                 )}
-                {[LEGEND[0], LEGEND[2], LEGEND[1]].map((l) => (
+                {[...legend.filter((l) => l.key !== "executed"), LEGEND[2]].map((l) => (
                   <Line
                     key={l.key}
                     type="monotone"
@@ -179,7 +186,7 @@ export function EarnedValuePanel({
             </ResponsiveContainer>
           </div>
           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-            {LEGEND.map((l) => (
+            {legend.map((l) => (
               <span key={l.key} className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-4"
@@ -194,6 +201,12 @@ export function EarnedValuePanel({
               </span>
             ))}
           </div>
+          {ev.replannedDiffers && (
+            <p className="text-xs text-muted-foreground">
+              As datas atuais diferem da linha de base. O previsto e o atraso continuam medidos pela
+              linha de base; a coordenação pode atualizá-la na aba Medições do contrato.
+            </p>
+          )}
           {ev.withoutPlan > 0 && (
             <p className="text-xs text-amber-700">
               {ev.withoutPlan} contrato(s) sem datas planejadas ficam fora do previsto.
@@ -204,12 +217,13 @@ export function EarnedValuePanel({
               Como a curva é calculada
             </summary>
             <p className="mt-2 max-w-3xl">
-              Previsto: valor de cada contrato distribuído por igual entre o início e o término
-              planejados. Executado: valor das medições aprovadas, no fim de cada período medido.
-              Pago: adiantamentos na data do pagamento mais o líquido de cada medição aprovada (já
-              sem adiantamentos e retenção). O atraso compara o valor executado com a data em que o
-              previsto chegou a esse valor. Gastos fora dos contratos (desembolso do UAU) ficam no
-              Fluxo financeiro do planejamento.
+              Previsto: valor de cada contrato distribuído por igual entre o início e o término da
+              linha de base (ou das datas planejadas, enquanto não houver linha de base).
+              Replanejado: o mesmo cálculo com as datas atuais. Executado: valor das medições
+              aprovadas, no fim de cada período medido. Pago: adiantamentos na data do pagamento
+              mais o líquido de cada medição aprovada (já sem adiantamentos e retenção). O atraso
+              compara o valor executado com a data em que o previsto chegou a esse valor. Gastos
+              fora dos contratos (desembolso do UAU) ficam no Fluxo financeiro do planejamento.
             </p>
           </details>
         </div>

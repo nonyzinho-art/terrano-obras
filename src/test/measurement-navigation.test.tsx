@@ -31,6 +31,7 @@ vi.mock("@/lib/repository", () => ({
   getWorkPhotos: () => [],
   getMeasurements: () => [],
   getMeasurementAdvances: () => [],
+  getBaselines: () => [],
   getEarnedValue: () => ({
     series: [],
     currentMonth: "2026-10-01",

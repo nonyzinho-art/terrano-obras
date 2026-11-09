@@ -13,10 +13,14 @@ export interface EvContract {
   total: number;
   planned_start?: string | null | undefined;
   planned_end?: string | null | undefined;
+  /** Linha de base vigente; sem ela, o previsto usa as datas atuais. */
+  baseline?: { planned_start: string; planned_end: string } | null | undefined;
 }
 export interface EvPoint {
   month: string;
   planned: number | null;
+  /** Previsto pelas datas atuais, quando diferem da linha de base. */
+  replanned: number | null;
   executed: number | null;
   paid: number | null;
 }
@@ -45,8 +49,21 @@ export function earnedValue(
   today: string,
 ) {
   const ids = new Set(contracts.map((c) => c.id));
-  const planned = contracts.filter(
-    (c) => c.total > 0 && hasValidPlan(c.planned_start, c.planned_end),
+  // Previsto oficial: linha de base vigente (ou as datas atuais, se ainda não houver).
+  const planned = contracts
+    .map((c) => ({
+      ...c,
+      current_start: c.planned_start,
+      current_end: c.planned_end,
+      planned_start: c.baseline?.planned_start ?? c.planned_start,
+      planned_end: c.baseline?.planned_end ?? c.planned_end,
+    }))
+    .filter((c) => c.total > 0 && hasValidPlan(c.planned_start, c.planned_end));
+  const currentValid = (c: (typeof planned)[number]) =>
+    hasValidPlan(c.current_start, c.current_end);
+  const replannedDiffers = planned.some(
+    (c) =>
+      currentValid(c) && (c.current_start !== c.planned_start || c.current_end !== c.planned_end),
   );
   const approved = measurements.filter((m) => ids.has(m.budget_id) && m.status === "aprovada");
   // Eventos datados (valor executado e valor pago).
@@ -72,10 +89,23 @@ export function earnedValue(
         0,
       ),
     );
+  const replannedAt = (date: string) =>
+    cents(
+      planned.reduce(
+        (sum, c) =>
+          sum +
+          c.total *
+            (currentValid(c)
+              ? plannedFraction(c.current_start, c.current_end, date)
+              : plannedFraction(c.planned_start, c.planned_end, date)),
+        0,
+      ),
+    );
 
   const dates = [
     today,
     ...planned.flatMap((c) => [c.planned_start!, c.planned_end!]),
+    ...planned.flatMap((c) => (currentValid(c) ? [c.current_start!, c.current_end!] : [])),
     ...executedEvents.map(([d]) => d),
     ...paidEvents.map(([d]) => d),
   ].sort();
@@ -93,6 +123,7 @@ export function earnedValue(
     series.push({
       month: m,
       planned: planned.length ? plannedAt(end) : null,
+      replanned: replannedDiffers ? replannedAt(end) : null,
       executed: past ? upTo(executedEvents, cut) : null,
       paid: past ? upTo(paidEvents, cut) : null,
     });
@@ -120,6 +151,9 @@ export function earnedValue(
   return {
     series,
     currentMonth,
+    /** As datas atuais de algum contrato diferem da linha de base. */
+    replannedDiffers,
+    usesBaseline: planned.some((c) => !!c.baseline),
     plannedToday,
     plannedTotal,
     executed,

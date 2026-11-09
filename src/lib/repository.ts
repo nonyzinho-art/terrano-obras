@@ -12,6 +12,7 @@ import type {
   BudgetMeasurement,
   BudgetMeasurementItem,
   MeasurementAdvance,
+  BudgetBaseline,
   DailyReport,
   DailyReportItem,
   Issue,
@@ -34,6 +35,7 @@ export type DataSnapshot = {
   measurements?: BudgetMeasurement[];
   measurementItems?: BudgetMeasurementItem[];
   measurementAdvances?: MeasurementAdvance[];
+  baselines?: BudgetBaseline[];
 };
 
 const brazilToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
@@ -50,6 +52,7 @@ let works: Work[] = [];
 let measurements: BudgetMeasurement[] = [];
 let measurementItems: BudgetMeasurementItem[] = [];
 let measurementAdvances: MeasurementAdvance[] = [];
+let baselines: BudgetBaseline[] = [];
 let TODAY: string = brazilToday();
 
 /** Loads the account's data. `null` clears it (logout or account switch). */
@@ -78,6 +81,7 @@ export function replaceData(data: DataSnapshot | null) {
   measurements = data?.measurements ?? [];
   measurementItems = data?.measurementItems ?? [];
   measurementAdvances = data?.measurementAdvances ?? [];
+  baselines = data?.baselines ?? [];
   TODAY = brazilToday();
   emit();
 }
@@ -329,6 +333,11 @@ export function getProgressCurve(workId: string) {
   return result;
 }
 
+/** Linhas de base do contrato, da vigente (mais recente) para a mais antiga. */
+export const getBaselines = (budgetId: string) =>
+  baselines
+    .filter((b) => b.budget_id === budgetId)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
 /** Curva S financeira (previsto × executado × pago) da obra ou de um contrato. */
 export function getEarnedValue(workId: string, budgetId?: string) {
   const contracts = getMeasurementProgress(workId)
@@ -338,6 +347,7 @@ export function getEarnedValue(workId: string, budgetId?: string) {
       total: s.total,
       planned_start: s.budget.planned_start,
       planned_end: s.budget.planned_end,
+      baseline: getBaselines(s.budget.id)[0] ?? null,
     }));
   return earnedValue(contracts, measurements, measurementItems, measurementAdvances, TODAY);
 }

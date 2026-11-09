@@ -30,6 +30,7 @@ export async function loadCloudData() {
     measurements,
     measurementItems,
     measurementAdvances,
+    baselines,
   ] = await Promise.all(
     [
       "works",
@@ -43,6 +44,7 @@ export async function loadCloudData() {
       "budget_measurements",
       "budget_measurement_items",
       "budget_measurement_advances",
+      "budget_baselines",
     ].map(rows),
   );
   // Metadata is cheap. Private image URLs are requested only when an image is visible/exported.
@@ -56,6 +58,7 @@ export async function loadCloudData() {
     measurements,
     measurementItems,
     measurementAdvances,
+    baselines,
     works,
     budgets,
     budgetItems: budgetItems!.map((b) => ({

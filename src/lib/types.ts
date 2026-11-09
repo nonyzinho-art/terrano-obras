@@ -81,6 +81,16 @@ export interface BudgetMeasurement {
   approved_at: string | null;
   revision: number;
 }
+export interface BudgetBaseline {
+  id: string;
+  budget_id: string;
+  work_id: string;
+  planned_start: string;
+  planned_end: string;
+  reason: string;
+  created_by: string | null;
+  created_at: string;
+}
 export interface MeasurementAdvance {
   id: string;
   measurement_id: string;

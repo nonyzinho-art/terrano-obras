@@ -85,4 +85,33 @@ describe("Curva S financeira", () => {
     expect(ev.delayDays).toBeNull();
     expect(ev.withoutPlan).toBe(1);
   });
+
+  it("mede o atraso pela linha de base mesmo depois de replanejar", () => {
+    const ms = [med("m1", "2026-01-01", "2026-01-31")];
+    // Replanejado para abril a junho, mas a linha de base continua janeiro a março.
+    const replanned = {
+      ...contract,
+      planned_start: "2026-04-01",
+      planned_end: "2026-06-30",
+      baseline: { planned_start: "2026-01-01", planned_end: "2026-03-31" },
+    };
+    const ev = earnedValue([replanned], ms, [line("m1", 50000)], [], "2026-03-01");
+    expect(ev.usesBaseline).toBe(true);
+    expect(ev.replannedDiffers).toBe(true);
+    // Mesmo atraso do caso sem replanejamento (~45 dias), não "adiantado".
+    expect(ev.delayDays).toBeGreaterThanOrEqual(43);
+    const feb = ev.series.find((p) => p.month === "2026-02-01")!;
+    expect(feb.planned).toBeGreaterThan(150000);
+    expect(feb.replanned).toBe(0);
+  });
+
+  it("sem diferença de datas não desenha o replanejado", () => {
+    const same = {
+      ...contract,
+      baseline: { planned_start: "2026-01-01", planned_end: "2026-03-31" },
+    };
+    const ev = earnedValue([same], [], [], [], "2026-02-01");
+    expect(ev.replannedDiffers).toBe(false);
+    expect(ev.series.every((p) => p.replanned === null)).toBe(true);
+  });
 });

@@ -19,6 +19,7 @@ vi.mock("@/lib/repository", () => ({
   replaceData: vi.fn(),
   getMeasurements: () => mocks.history,
   getMeasurementAdvances: () => [],
+  getBaselines: () => [],
   getBudgetMeasurementData: () => ({ measurements: [], lines: [], advances: [] }),
   getMeasurementItems: () => [{ budget_item_id: "i", quantity: 2, unit_price: 10 }],
   getMeasurementProgress: () => ({

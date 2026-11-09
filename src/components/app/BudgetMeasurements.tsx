@@ -3,6 +3,7 @@ import { useBackgroundPause } from "@/lib/background-refresh";
 import { UnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { Panel } from "./bits";
 import { MeasurementReportDialog } from "./MeasurementReportDialog";
+import { BaselineSection } from "./BaselineSection";
 import {
   MeasurementAdvances,
   advanceDraft,
@@ -403,6 +404,13 @@ export function BudgetMeasurements({
             </Button>
           )}
         </form>
+        <BaselineSection
+          budget={budget}
+          approver={approver && writable}
+          busy={busy}
+          setBusy={setBusy}
+          setMessage={setMessage}
+        />
       </Panel>
       <Panel title="Retenção contratual">
         <p className="mb-4 text-sm text-muted-foreground">
