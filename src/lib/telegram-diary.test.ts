@@ -11,6 +11,7 @@ import {
   parseEquipment,
   parseWeather,
   parseWorkers,
+  reminderText,
   savedText,
   summaryText,
   type Summary,
@@ -83,5 +84,18 @@ describe("diário pelo Telegram", () => {
     expect(savedText("equipment", { ...base, equipment: [], equipment_quantity: 0 })).toBe(
       "Sem equipamentos hoje.",
     );
+  });
+});
+
+describe("lembrete das 17:30", () => {
+  it("lista as obras sem diário e os rascunhos a finalizar", () => {
+    const text = reminderText("09/11/2026", [
+      { work: "Brisas do Sul", draft: false, photos: 0 },
+      { work: "Reserva do Parque", draft: true, photos: 6 },
+    ]);
+    expect(text).toContain("⏰ Lembrete do diário — 09/11/2026");
+    expect(text).toContain("• Brisas do Sul: ainda sem diário hoje");
+    expect(text).toContain("• Reserva do Parque: rascunho aberto (6 foto(s)) — falta finalizar");
+    expect(text).toContain("/diario");
   });
 });

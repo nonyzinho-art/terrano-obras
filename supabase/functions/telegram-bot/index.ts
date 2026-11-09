@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
-import {INVALID,PHOTO_HELP,QUESTIONS,backKeyboard,confirmKeyboard,isBack,isConfirm,menuAction,menuKeyboard,missing,parseEquipment,parseWeather,parseWorkers,savedText,summaryText,weatherKeyboard,type Field,type Summary} from "./diary.ts";
+import {INVALID,PHOTO_HELP,QUESTIONS,backKeyboard,confirmKeyboard,isBack,isConfirm,menuAction,menuKeyboard,missing,parseEquipment,parseWeather,parseWorkers,reminderKeyboard,reminderText,savedText,summaryText,weatherKeyboard,type Field,type Summary} from "./diary.ts";
 const url = Deno.env.get("SUPABASE_URL")!;
 const roleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
@@ -23,6 +23,17 @@ Deno.serve(async(req:Request)=>{
  try {
   const body=await req.json();
   const admin=createClient(url,roleKey,{auth:{persistSession:false,autoRefreshToken:false}});
+  // 17:30 reminder, called by the database schedule with a key kept in the vault.
+  if(body.action==="remind") {
+   if(!botToken) return response({error:"Configuração pendente"},503);
+   const {data,error}=await admin.rpc("telegram_reminder_list",{p_key:typeof body.key==="string" ? body.key : ""});
+   if(error || !data) return response({error:"Não autorizado"},401);
+   let sent=0;
+   for(const person of data.people ?? []) {
+    try {await send(person.telegram_user_id,reminderText(data.date,person.works),reminderKeyboard);sent++;} catch {/* blocked bot or deleted chat */}
+   }
+   return response({sent});
+  }
   if(body.action==="link" || body.action==="configure") {
    const auth=req.headers.get("Authorization") ?? "";
    if(!auth.startsWith("Bearer ")) return response({error:"Entre na sua conta"},401);

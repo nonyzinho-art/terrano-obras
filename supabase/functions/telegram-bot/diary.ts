@@ -176,3 +176,26 @@ export function missing(s: Summary | null) {
   if (!s.photos) list.push("fotos");
   return list;
 }
+
+export type ReminderWork = { work: string; draft: boolean; photos: number };
+/** Lembrete das 17:30 para quem ainda não finalizou o diário das suas obras. */
+export function reminderText(date: string, works: ReminderWork[]) {
+  const lines = works.map((w) =>
+    w.draft
+      ? `• ${w.work}: rascunho aberto${w.photos ? ` (${w.photos} foto(s))` : ""} — falta finalizar`
+      : `• ${w.work}: ainda sem diário hoje`,
+  );
+  return [
+    `⏰ Lembrete do diário — ${date}`,
+    "",
+    "Ainda falta registrar:",
+    ...lines,
+    "",
+    "Toque em /diario para registrar agora. Se a obra não trabalhou hoje, registre isso numa observação e finalize.",
+  ].join("\n");
+}
+export const reminderKeyboard = {
+  keyboard: [[{ text: "/diario" }]],
+  resize_keyboard: true,
+  one_time_keyboard: true,
+};
