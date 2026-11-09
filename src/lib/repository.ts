@@ -10,6 +10,7 @@ import type {
   BudgetItem,
   BudgetMeasurement,
   BudgetMeasurementItem,
+  MeasurementAdvance,
   DailyReport,
   DailyReportItem,
   Issue,
@@ -31,6 +32,7 @@ export type DataSnapshot = {
   works: Work[];
   measurements?: BudgetMeasurement[];
   measurementItems?: BudgetMeasurementItem[];
+  measurementAdvances?: MeasurementAdvance[];
 };
 
 const brazilToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
@@ -46,6 +48,7 @@ let services: WorkService[] = [];
 let works: Work[] = [];
 let measurements: BudgetMeasurement[] = [];
 let measurementItems: BudgetMeasurementItem[] = [];
+let measurementAdvances: MeasurementAdvance[] = [];
 let TODAY: string = brazilToday();
 
 /** Loads the account's data. `null` clears it (logout or account switch). */
@@ -73,6 +76,7 @@ export function replaceData(data: DataSnapshot | null) {
   });
   measurements = data?.measurements ?? [];
   measurementItems = data?.measurementItems ?? [];
+  measurementAdvances = data?.measurementAdvances ?? [];
   TODAY = brazilToday();
   emit();
 }
@@ -116,6 +120,16 @@ export const getBudgetAlerts = (workId?: string) =>
   );
 export const getMeasurementItems = (measurementId: string) =>
   measurementItems.filter((m) => m.measurement_id === measurementId);
+export const getMeasurementAdvances = (measurementId: string) =>
+  measurementAdvances
+    .filter((a) => a.measurement_id === measurementId)
+    .sort((a, b) => a.position - b.position);
+/** Itens e adiantamentos de todas as medições de um orçamento (para o saldo a descontar). */
+export const getBudgetMeasurementData = (budgetId: string) => ({
+  measurements: measurements.filter((m) => m.budget_id === budgetId),
+  lines: measurementItems.filter((l) => l.budget_id === budgetId),
+  advances: measurementAdvances.filter((a) => a.budget_id === budgetId),
+});
 export const getApprovedBudgetQuantities = (budgetId: string) =>
   approvedQuantities(
     measurements.filter((m) => m.budget_id === budgetId),

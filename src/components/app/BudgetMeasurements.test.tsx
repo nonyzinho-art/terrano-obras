@@ -18,6 +18,8 @@ vi.mock("@/lib/repository", () => ({
   TODAY: "2026-10-15",
   replaceData: vi.fn(),
   getMeasurements: () => mocks.history,
+  getMeasurementAdvances: () => [],
+  getBudgetMeasurementData: () => ({ measurements: [], lines: [], advances: [] }),
   getMeasurementItems: () => [{ budget_item_id: "i", quantity: 2, unit_price: 10 }],
   getMeasurementProgress: () => ({
     summaries: [{ budget: { id: "b" }, total: 100, executed: 0, actual: 0 }],
@@ -79,6 +81,42 @@ describe("conferência de medições", () => {
           period_start: "2026-10-15",
           period_end: "2026-10-15",
           items: [{ budget_item_id: "i", quantity: 2.5 }],
+        }),
+      }),
+    );
+  });
+  it("envia os adiantamentos e mostra o valor para NF descontado", async () => {
+    render(<BudgetMeasurements budget={{ ...budget, retention_percent: 5 }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Nova medição" }));
+    fireEvent.change(screen.getByLabelText("Quantidade do período 1.1"), {
+      target: { value: "10" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Adicionar adiantamento/ }));
+    fireEvent.change(screen.getByLabelText("Fornecedor do adiantamento 1"), {
+      target: { value: "Votorantim" },
+    });
+    fireEvent.change(screen.getByLabelText("Processo UAU do adiantamento 1"), {
+      target: { value: "3234" },
+    });
+    fireEvent.change(screen.getByLabelText("Valor (R$) do adiantamento 1"), {
+      target: { value: "30,50" },
+    });
+    // Medido R$ 100,00; retenção 5% = R$ 5,00; NF = 100 − 30,50 = R$ 69,50; líquido R$ 64,50.
+    expect(screen.getByText("Valor para emissão da NF").nextSibling?.textContent).toMatch(/69,50/);
+    expect(screen.getByText("Líquido a pagar").nextSibling?.textContent).toMatch(/64,50/);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }));
+    await waitFor(() =>
+      expect(mocks.rpc).toHaveBeenCalledWith("budget_measurement_action", {
+        p_action: "salvar",
+        p_payload: expect.objectContaining({
+          advances: [
+            expect.objectContaining({
+              supplier: "Votorantim",
+              uau_process: "3234",
+              amount: 30.5,
+              source: "manual",
+            }),
+          ],
         }),
       }),
     );

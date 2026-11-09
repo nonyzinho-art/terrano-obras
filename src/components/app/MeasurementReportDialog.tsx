@@ -14,7 +14,14 @@ import { getSupabase } from "@/lib/supabase";
 import { approvedQuantities } from "@/lib/measurement-progress";
 import { quoteRows as readRows } from "@/lib/quotes";
 import { fmtDate } from "@/lib/format";
-import type { Budget, BudgetMeasurement, BudgetMeasurementItem, Photo } from "@/lib/types";
+import type {
+  Budget,
+  BudgetMeasurement,
+  BudgetMeasurementItem,
+  MeasurementAdvance,
+  Photo,
+} from "@/lib/types";
+import { settlementFor } from "@/lib/measurement-advances";
 import type { ReportAttachment, ReportAuthors } from "@/lib/measurement-report";
 
 async function preparePhoto(photo: Photo): Promise<ReportAttachment> {
@@ -75,9 +82,10 @@ export function MeasurementReportDialog({
     try {
       const work = getWork(budget.work_id);
       if (!work) throw new Error("Obra não encontrada.");
-      const [history, lines] = await Promise.all([
+      const [history, lines, advances] = await Promise.all([
         readRows<BudgetMeasurement>("budget_measurements", "budget_id", budget.id),
         readRows<BudgetMeasurementItem>("budget_measurement_items", "budget_id", budget.id),
+        readRows<MeasurementAdvance>("budget_measurement_advances", "budget_id", budget.id),
       ]);
       const saved = history.find((m) => m.id === measurement.id);
       if (!saved) throw new Error("Atualize os dados antes de gerar o relatório.");
@@ -107,6 +115,10 @@ export function MeasurementReportDialog({
         items: getItemsByBudget(budget.id),
         lines: lines.filter((line) => line.measurement_id === saved.id),
         previous,
+        advances: advances
+          .filter((a) => a.measurement_id === saved.id)
+          .sort((a, b) => a.position - b.position),
+        settlement: settlementFor(saved, history, lines, advances),
         authors,
         photos: attachments,
         issuedAt: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),

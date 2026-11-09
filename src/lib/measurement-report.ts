@@ -1,7 +1,15 @@
 import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import { fmtBRL, fmtDate, fmtNum } from "./format";
-import type { Budget, BudgetItem, BudgetMeasurement, BudgetMeasurementItem, Work } from "./types";
+import type {
+  Budget,
+  BudgetItem,
+  BudgetMeasurement,
+  BudgetMeasurementItem,
+  MeasurementAdvance,
+  Work,
+} from "./types";
+import type { Settlement } from "./measurement-advances";
 
 export interface ReportAuthors {
   author_name: string;
@@ -23,6 +31,8 @@ export interface MeasurementReportInput {
   items: BudgetItem[];
   lines: BudgetMeasurementItem[];
   previous: Map<string, number>;
+  advances?: MeasurementAdvance[];
+  settlement?: Settlement;
   authors: ReportAuthors;
   photos: ReportAttachment[];
   issuedAt: string;
@@ -174,6 +184,71 @@ export function buildMeasurementReport(input: MeasurementReportInput) {
     rowPageBreak: "avoid",
   });
   y = (pdf as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
+  const advances = input.advances ?? [];
+  if (advances.length) {
+    autoTable(pdf, {
+      ...common,
+      startY: y,
+      head: [["Adiantamentos descontados", "NF", "Processo UAU", "Data", "Valor"]],
+      body: advances.map((a) => [
+        text(a.supplier + (a.description ? ` - ${a.description}` : "")),
+        text(a.invoice),
+        text(a.uau_process),
+        a.paid_on ? fmtDate(a.paid_on) : "",
+        money(Number(a.amount)),
+      ]),
+      columnStyles: { 4: { halign: "right", cellWidth: 34 }, 3: { cellWidth: 24 } },
+      foot: [
+        [
+          {
+            content: "TOTAL DE ADIANTAMENTOS DESTA MEDIÇÃO",
+            colSpan: 4,
+            styles: { halign: "right" },
+          },
+          {
+            content: money(advances.reduce((s, a) => s + Number(a.amount), 0)),
+            styles: { halign: "right" },
+          },
+        ],
+      ],
+      showFoot: "lastPage",
+      footStyles: { fillColor: [224, 237, 228], textColor: green },
+      rowPageBreak: "avoid",
+    });
+    y = (pdf as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
+  }
+  const st = input.settlement;
+  if (st) {
+    autoTable(pdf, {
+      ...common,
+      startY: y,
+      theme: "grid",
+      head: [[{ content: "SÍNTESE FINANCEIRA DA MEDIÇÃO", colSpan: 2 }]],
+      columnStyles: { 0: { cellWidth: 110 }, 1: { cellWidth: 45, halign: "right" } },
+      tableWidth: 155,
+      body: [
+        ["Valor medido", money(st.measured)],
+        ["Saldo de adiantamentos de medições anteriores", money(st.carriedIn)],
+        ["Adiantamentos desta medição", money(st.advances)],
+        ["(-) Adiantamentos descontados nesta medição", money(-st.deducted)],
+        [
+          { content: "VALOR PARA EMISSÃO DA NF (BRUTO)", styles: { fontStyle: "bold" } },
+          { content: money(st.invoice), styles: { fontStyle: "bold" } },
+        ],
+        [
+          text(`(-) Retenção contratual (${fmtNum(st.retentionPercent, 2)}%)`),
+          money(-st.retention),
+        ],
+        [
+          { content: "VALOR LÍQUIDO A PAGAR", styles: { fontStyle: "bold" } },
+          { content: money(st.payable), styles: { fontStyle: "bold" } },
+        ],
+        ["Saldo de adiantamento a descontar na próxima medição", money(st.carriedOut)],
+      ],
+      rowPageBreak: "avoid",
+    });
+    y = (pdf as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
+  }
   autoTable(pdf, {
     ...common,
     startY: y,

@@ -30,6 +30,8 @@ vi.mock("@/lib/repository", () => ({
   getReportsByWork: () => [],
   getWorkPhotos: () => [],
   getMeasurements: () => [],
+  getMeasurementAdvances: () => [],
+  getBudgetMeasurementData: () => ({ measurements: [], lines: [], advances: [] }),
   getMeasurementItems: () => [],
   getMeasurementProgress: () => ({
     summaries: [{ budget: { id: "b" }, total: 100, executed: 0, actual: 0, planned: 0 }],

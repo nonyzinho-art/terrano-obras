@@ -37,6 +37,7 @@ export interface Budget {
   planned_start?: string | null;
   planned_end?: string | null;
   execution_status?: "em_execucao" | "concluido";
+  retention_percent?: number;
   revision?: number;
   source_filename?: string;
   id: string;
@@ -66,6 +67,7 @@ export interface BudgetItem {
 export interface BudgetMeasurement {
   replaces_id?: string | null;
   revision_reason?: string | null;
+  retention_percent?: number;
   id: string;
   budget_id: string;
   work_id: string;
@@ -78,6 +80,20 @@ export interface BudgetMeasurement {
   approved_by: string | null;
   approved_at: string | null;
   revision: number;
+}
+export interface MeasurementAdvance {
+  id: string;
+  measurement_id: string;
+  budget_id: string;
+  work_id: string;
+  position: number;
+  supplier: string;
+  invoice: string;
+  uau_process: string;
+  paid_on: string | null;
+  description: string;
+  amount: number;
+  source: "manual" | "uau";
 }
 export interface BudgetMeasurementItem {
   id: string;

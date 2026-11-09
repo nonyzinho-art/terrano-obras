@@ -3,12 +3,20 @@ import { useBackgroundPause } from "@/lib/background-refresh";
 import { UnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { Panel } from "./bits";
 import { MeasurementReportDialog } from "./MeasurementReportDialog";
+import {
+  MeasurementAdvances,
+  advanceDraft,
+  advancesSignature,
+  type AdvanceDraft,
+} from "./MeasurementAdvances";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   getItemsByBudget,
   getMeasurements,
   getMeasurementItems,
+  getMeasurementAdvances,
+  getBudgetMeasurementData,
   getMeasurementProgress,
   replaceData,
   TODAY,
@@ -19,6 +27,7 @@ import { useAccess } from "@/lib/access";
 import { fmtBRL, fmtDate, fmtNum, fmtPct } from "@/lib/format";
 import { parseAmount } from "@/lib/budget-import";
 import { approvedQuantities } from "@/lib/measurement-progress";
+import { carriedInFor, settle, settlementFor } from "@/lib/measurement-advances";
 import type { Budget, BudgetMeasurement } from "@/lib/types";
 
 export function BudgetMeasurements({
@@ -57,6 +66,12 @@ export function BudgetMeasurements({
         : [],
     ),
   );
+  const [advances, setAdvances] = useState<AdvanceDraft[]>(() =>
+    initial ? getMeasurementAdvances(initial.id).map(advanceDraft) : [],
+  );
+  const [retention, setRetention] = useState(
+    String(budget.retention_percent ?? 0).replace(".", ","),
+  );
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -77,11 +92,13 @@ export function BudgetMeasurements({
         getMeasurementItems(current.id).map((line) => [line.budget_item_id, String(line.quantity)]),
       )
     : {};
+  const savedAdvances = current ? getMeasurementAdvances(current.id).map(advanceDraft) : [];
   const dirty =
     !!editing &&
     !frozen &&
     (current
-      ? start !== current.period_start ||
+      ? advancesSignature(advances) !== advancesSignature(savedAdvances) ||
+        start !== current.period_start ||
         end !== current.period_end ||
         notes !== current.notes ||
         JSON.stringify(Object.entries(quantities).sort()) !==
@@ -89,6 +106,7 @@ export function BudgetMeasurements({
       : start !== TODAY ||
         end !== TODAY ||
         notes.trim() !== "" ||
+        advances.length > 0 ||
         Object.values(quantities).some((value) => value.trim() !== ""));
   const mayEdit =
     writable && !frozen && (!current || current.created_by === profile?.user_id || approver);
@@ -109,6 +127,7 @@ export function BudgetMeasurements({
     setSearch("");
     setMessage("");
     setRevisionReason("");
+    setAdvances(measurement ? getMeasurementAdvances(measurement.id).map(advanceDraft) : []);
     setQuantities(
       Object.fromEntries(
         measurement
@@ -139,6 +158,7 @@ export function BudgetMeasurements({
         return;
       }
       if (name === "salvar") {
+        setAdvances(getMeasurementAdvances(String(payload["id"])).map(advanceDraft));
         setQuantities(
           Object.fromEntries(
             getMeasurementItems(String(payload["id"])).map((line) => [
@@ -147,7 +167,7 @@ export function BudgetMeasurements({
             ]),
           ),
         );
-      } else if (name !== "planejar") setEditing(null);
+      } else if (name !== "planejar" && name !== "retencao") setEditing(null);
       setMessage(
         name === "aprovar"
           ? "Medição aprovada. Executado, saldo e indicadores atualizados."
@@ -155,7 +175,9 @@ export function BudgetMeasurements({
             ? "Medição salva. Você pode continuar editando ou aprovar após conferir."
             : name === "planejar"
               ? "Datas do cronograma atualizadas."
-              : "Rascunho cancelado.",
+              : name === "retencao"
+                ? "Retenção do contrato atualizada. Medições em rascunho usam o novo percentual ao serem salvas."
+                : "Rascunho cancelado.",
       );
     } catch (error) {
       setMessage(
@@ -176,6 +198,34 @@ export function BudgetMeasurements({
         setMessage("Preencha ao menos uma quantidade do período.");
         return;
       }
+      const advancePayload = [];
+      for (const [i, a] of advances.entries()) {
+        let amount: number | null = null;
+        try {
+          amount = parseAmount(a.amount);
+        } catch {
+          /* tratado abaixo */
+        }
+        if (!amount || amount <= 0 || Math.round(amount * 100) !== amount * 100) {
+          setMessage(
+            `Adiantamento ${i + 1}: informe um valor positivo com até duas casas decimais.`,
+          );
+          return;
+        }
+        if (!a.supplier.trim()) {
+          setMessage(`Adiantamento ${i + 1}: informe o fornecedor.`);
+          return;
+        }
+        advancePayload.push({
+          supplier: a.supplier.trim(),
+          invoice: a.invoice.trim(),
+          uau_process: a.uau_process.trim(),
+          paid_on: a.paid_on || null,
+          description: a.description.trim(),
+          amount,
+          source: a.source,
+        });
+      }
       void action("salvar", {
         id: editing,
         revision: current?.revision,
@@ -183,10 +233,59 @@ export function BudgetMeasurements({
         period_end: end,
         notes,
         items: lines,
+        advances: advancePayload,
       });
     } catch {
       setMessage("Confira as quantidades. Use números positivos com até quatro casas decimais.");
     }
+  }
+  const budgetData = getBudgetMeasurementData(budget.id);
+  const measuredNow = items.reduce((sum, item) => {
+    let q = 0;
+    try {
+      q = parseAmount(quantities[item.id] ?? "") ?? 0;
+    } catch {
+      /* quantidade inválida ainda em edição */
+    }
+    return sum + Math.round(q * item.unit_price * 100) / 100;
+  }, 0);
+  const advancesNow = advances.reduce((sum, a) => {
+    try {
+      return sum + (parseAmount(a.amount) ?? 0);
+    } catch {
+      return sum;
+    }
+  }, 0);
+  const settlement = settle(
+    frozen && current
+      ? settlementFor(current, budgetData.measurements, budgetData.lines, budgetData.advances)
+          .measured
+      : measuredNow,
+    Number((frozen ? current?.retention_percent : budget.retention_percent) ?? 0),
+    advancesNow,
+    editing
+      ? carriedInFor(
+          { id: editing, period_start: start, replaces_id: current?.replaces_id ?? null },
+          budgetData.measurements,
+          budgetData.lines,
+          budgetData.advances,
+        )
+      : 0,
+  );
+  const usedProcesses = new Map<string, string>();
+  for (const a of budgetData.advances) {
+    const m = budgetData.measurements.find((x) => x.id === a.measurement_id);
+    if (
+      a.uau_process &&
+      m &&
+      (m.status === "aprovada" || m.status === "rascunho") &&
+      m.id !== editing &&
+      m.id !== current?.replaces_id
+    )
+      usedProcesses.set(
+        a.uau_process,
+        `medição de ${fmtDate(m.period_start)} a ${fmtDate(m.period_end)}`,
+      );
   }
   return (
     <div className="space-y-5">
@@ -305,6 +404,46 @@ export function BudgetMeasurements({
           )}
         </form>
       </Panel>
+      <Panel title="Retenção contratual">
+        <p className="mb-4 text-sm text-muted-foreground">
+          Percentual retido de cada medição (caução). Deixe 0% nos contratos sem retenção. Somente a
+          coordenação altera; vale para as medições salvas a partir da mudança.
+        </p>
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            let pct: number | null = null;
+            try {
+              pct = parseAmount(retention.trim() || "0");
+            } catch {
+              /* tratado abaixo */
+            }
+            if (pct === null || pct > 100 || Math.round(pct * 100) !== pct * 100) {
+              setMessage("Informe a retenção entre 0 e 100%, com até duas casas decimais.");
+              return;
+            }
+            void action("retencao", { retention_percent: pct });
+          }}
+        >
+          <label className="text-sm">
+            Retenção (%)
+            <Input
+              aria-label="Percentual de retenção do contrato"
+              inputMode="decimal"
+              className="w-28 text-right"
+              value={retention}
+              disabled={!approver || !writable || busy}
+              onChange={(e) => setRetention(e.target.value)}
+            />
+          </label>
+          {approver && writable && (
+            <Button type="submit" disabled={busy || budget.status !== "aprovado"}>
+              Salvar retenção
+            </Button>
+          )}
+        </form>
+      </Panel>
       <Panel title="Histórico de medições">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
@@ -329,6 +468,12 @@ export function BudgetMeasurements({
                 (sum, line) => sum + Math.round(line.quantity * line.unit_price * 100) / 100,
                 0,
               );
+              const money = settlementFor(
+                m,
+                budgetData.measurements,
+                budgetData.lines,
+                budgetData.advances,
+              );
               return (
                 <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                   <div>
@@ -344,6 +489,8 @@ export function BudgetMeasurements({
                     </div>
                     <div className="num text-sm text-muted-foreground">
                       {fmtBRL(value)}
+                      {(money.deducted > 0 || money.retention > 0) &&
+                        ` · NF ${fmtBRL(money.invoice)}`}
                       {m.approved_at && ` · Aprovada em ${fmtDate(m.approved_at)}`}
                       {m.replaces_id && (
                         <span className="ml-2 text-primary">Revisão de medição anterior</span>
@@ -437,7 +584,7 @@ export function BudgetMeasurements({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <div className="max-h-[32rem] overflow-auto">
+            <div className="relative max-h-[32rem] overflow-auto">
               <table className="w-full min-w-[1000px] text-sm">
                 <caption className="sr-only">Quantidades e saldo dos itens do orçamento</caption>
                 <thead className="sticky top-0 bg-card">
@@ -512,6 +659,14 @@ export function BudgetMeasurements({
                 </tbody>
               </table>
             </div>
+            <MeasurementAdvances
+              advances={advances}
+              onChange={setAdvances}
+              editable={mayEdit && !busy}
+              settlement={settlement}
+              used={usedProcesses}
+              period={{ start, end }}
+            />
             <div className="flex flex-wrap gap-2">
               {current && (
                 <MeasurementReportDialog
@@ -618,7 +773,7 @@ export function BudgetMeasurements({
             <p className="text-xs text-muted-foreground">
               {frozen
                 ? "Esta medição está encerrada e disponível apenas para consulta. O histórico aprovado foi preservado."
-                : "Você pode editar datas, observações e quantidades enquanto a medição estiver em rascunho. Salve as alterações antes de aprovar. Cancelar rascunho encerra a medição; Fechar apenas sai desta edição."}
+                : "Você pode editar datas, observações, quantidades e adiantamentos enquanto a medição estiver em rascunho. Salve as alterações antes de aprovar. Cancelar rascunho encerra a medição; Fechar apenas sai desta edição."}
             </p>
           </form>
         </Panel>
