@@ -23,7 +23,9 @@ import {
   getReportsByWork,
   getWorkPhotos,
   useDataVersion,
+  getEarnedValue,
 } from "@/lib/repository";
+import { EarnedValuePanel } from "@/components/app/EarnedValuePanel";
 import { fmtBRL, fmtNum, fmtDate } from "@/lib/format";
 import { filterBudgetItems } from "@/lib/budget-filter";
 import type { BudgetStatus } from "@/lib/types";
@@ -433,6 +435,15 @@ function BudgetDetail() {
                 " Este orçamento não integra a revisão aprovada atual usada nos indicadores."}
             </p>
           </Panel>
+          {measured && (
+            <div className="mt-6">
+              <EarnedValuePanel
+                ev={getEarnedValue(budget.work_id, budget.id)}
+                title="Curva S do contrato — previsto × executado × pago"
+                scope="contrato"
+              />
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="medicoes" forceMount className="data-[state=inactive]:hidden">
           <BudgetVersions budget={budget} />

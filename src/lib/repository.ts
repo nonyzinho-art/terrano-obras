@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { measurementProgress, approvedQuantities } from "./measurement-progress";
 import { budgetAlerts } from "./budget-alerts";
+import { earnedValue } from "./earned-value";
 import { importRevisionProtection } from "./budget-revisions";
 import type {
   Activity,
@@ -326,4 +327,17 @@ export function getProgressCurve(workId: string) {
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
   return result;
+}
+
+/** Curva S financeira (previsto × executado × pago) da obra ou de um contrato. */
+export function getEarnedValue(workId: string, budgetId?: string) {
+  const contracts = getMeasurementProgress(workId)
+    .summaries.filter((s) => !budgetId || s.budget.id === budgetId)
+    .map((s) => ({
+      id: s.budget.id,
+      total: s.total,
+      planned_start: s.budget.planned_start,
+      planned_end: s.budget.planned_end,
+    }));
+  return earnedValue(contracts, measurements, measurementItems, measurementAdvances, TODAY);
 }

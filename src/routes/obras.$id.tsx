@@ -42,7 +42,9 @@ import {
   getWorkPhotos,
   serviceMetrics,
   useDataVersion,
+  getEarnedValue,
 } from "@/lib/repository";
+import { EarnedValuePanel } from "@/components/app/EarnedValuePanel";
 import { fmtBRL, fmtDate, fmtNum, fmtPct } from "@/lib/format";
 import type { DailyReport } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -386,6 +388,9 @@ function Evolution({ workId }: { workId: string }) {
   }));
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
+      <div className="xl:col-span-2">
+        <EarnedValuePanel ev={getEarnedValue(workId)} scope="obra" />
+      </div>
       <Panel title="Avanço por orçamento planejado" className="[&>div:last-child]:p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
